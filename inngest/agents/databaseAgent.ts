@@ -108,8 +108,8 @@ const saveToDatabaseTool = createTool({
 
         if (result?.addedToDB === "Success") {
             //Only set KV values if the operation was succesful
-            context.network?.state.set("saved-to-database", true);
-            context.network?.state.set("receipt", receiptId);
+            context.network?.state.kv.set("saved-to-database", true);
+            context.network?.state.kv.set("receipt", receiptId);
 
         }
         return result;
