@@ -63,7 +63,8 @@ export async function uploadPDF(formData: FormData) {
         //Generate the file URL 
         const fileUrl = await getFileDownloadUrl(storageId);
 
-        //TODO : trigger inngest agent flow...
+        //TODO : trigger inngest agent flow...  this is the start  (input)
+        console.log(' fileUrl.downloadUrl >> '+ fileUrl.downloadUrl, ' ..... ' , receiptId)
         await inngest.send({
             name: Events.EXTRACT_DATA_FROM_PDF_AND_SAVE_TO_DATABASE,
             data: {

@@ -1,5 +1,4 @@
-import { createAgent, createTool,openai } from "@inngest/agent-kit";
-import { anthropic } from "inngest";
+import { createAgent, createTool, openai, anthropic } from "@inngest/agent-kit";
 import { z } from "zod";
 
 
@@ -16,11 +15,12 @@ const parsePdfTool = createTool({
         
         return await step?.ai.infer("parse-pdf", {
             model: anthropic({
-                model: "claude-3-5-sonnet-20241022",
+                // model: "claude-3-5-sonnet-latest",
+                model: "claude-3-5-haiku-latest",
                 defaultParameters: {
                     max_tokens: 3094,
                 },
-            }),
+            }) as any,
             body: {
                 messages: [
                     {
@@ -77,7 +77,7 @@ const parsePdfTool = createTool({
     },
 });
 export const receiptScanningAgent = createAgent({
-    name: "Receipt Scanning Agent",
+    name: "receipt_scanning_agent",
     description: "Processes receipt images and PDFs to extract key information such as vendor names, dates, amounts, and line items",
     system: `You are an AI-powered receipt scanning assistant. Your primary role is to accurately extract and structure relevant information from scanned receipts. Your task includes recognizing and parsing details such as:
         - Merchant Information: Store name, address, contact details
@@ -92,6 +92,8 @@ export const receiptScanningAgent = createAgent({
         `,
     model: openai({
         model: "gpt-4o-mini",
+        // apiKey: process.env.OPENAI_API_KEY,
+        // baseUrl: "https://api.openai.com/v1/",
         defaultParameters: {
             max_completion_tokens: 3094,
         },

@@ -6,7 +6,7 @@ import { createAgent, createTool, openai } from "@inngest/agent-kit";
 import { z } from "zod";
 
 const saveToDatabaseTool = createTool({
-    name: "save-to-database",
+    name: "save_to_database",
     description: "Saves the given data to the convex database.",
 
     parameters: z.object({
@@ -107,9 +107,11 @@ const saveToDatabaseTool = createTool({
         );
 
         if (result?.addedToDB === "Success") {
-            //Only set KV values if the operation was succesful
-            context.network?.state.kv.set("saved-to-database", true);
-            context.network?.state.kv.set("receipt", receiptId);
+            //Only set state values if the operation was succesful
+            if (context.network) {
+                context.network.state.data["saved-to-database"] = true;
+                context.network.state.data["receipt"] = receiptId;
+            }
 
         }
         return result;
@@ -119,7 +121,7 @@ const saveToDatabaseTool = createTool({
 
 
 export const databaseAgent = createAgent({
-    name: "Database Agent",
+    name: "database_agent",
     description:
         "responsible for taking key information regarding receipts and saving it to the convex database.",
     system:
@@ -132,4 +134,3 @@ export const databaseAgent = createAgent({
     }),
     tools: [saveToDatabaseTool],
 });
-
