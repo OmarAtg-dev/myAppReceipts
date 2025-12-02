@@ -1,10 +1,33 @@
 "use client";
+import { useEffect } from "react";
 import {
-    SchematicEmbed as SchematicEmbedComponent,
     EmbedProvider,
+    SchematicEmbed as SchematicEmbedComponent,
+    useEmbed,
 } from "@schematichq/schematic-components";
 
 const schematicPublishableKey = process.env.NEXT_PUBLIC_SCHEMATIC_KEY;
+
+function EnsureCheckoutCapability() {
+    const { data, setData } = useEmbed();
+
+    useEffect(() => {
+        if (data && data.capabilities?.checkout === false) {
+            console.warn(
+                "Schematic capabilities reported checkout=disabled; overriding to keep plan actions visible.",
+            );
+            setData({
+                ...data,
+                capabilities: {
+                    ...data.capabilities,
+                    checkout: true,
+                },
+            });
+        }
+    }, [data, setData]);
+
+    return null;
+}
 
 function SchematicEmbed({
     accessToken,
@@ -20,6 +43,7 @@ function SchematicEmbed({
 
     return (
         <EmbedProvider apiKey={schematicPublishableKey}>
+            <EnsureCheckoutCapability />
             <SchematicEmbedComponent accessToken={accessToken} id={componentId} />
         </EmbedProvider>
     );
