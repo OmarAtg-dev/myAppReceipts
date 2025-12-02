@@ -51,6 +51,12 @@ function normalizeSubscription(
     };
 }
 
+declare global {
+    interface Window {
+        __schematicInvoicePatched?: boolean;
+    }
+}
+
 function EnsurePlanControls() {
     const { data, setData } = useEmbed();
 
@@ -175,15 +181,17 @@ function EnsurePlanControls() {
     }, [data, setData, fallbackPlan, fallbackPrice, derivedCompanySubscription]);
 
     useEffect(() => {
-        if (typeof window === "undefined") {
-            return;
-        }
-        if (!data?.component?.id || !fallbackInvoice) {
+        if (
+            typeof window === "undefined" ||
+            !data?.component?.id ||
+            !fallbackInvoice ||
+            window.__schematicInvoicePatched
+        ) {
             return;
         }
 
         const originalFetch = window.fetch.bind(window);
-        const targetPath = `/components/${data.component.id}/hydrate/upcoming-invoice`;
+        const componentId = data.component.id;
         const fallbackPayload = JSON.stringify({ data: fallbackInvoice });
 
         window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -195,6 +203,8 @@ function EnsurePlanControls() {
                     : input instanceof URL
                     ? input.toString()
                     : "";
+
+            const targetPath = `/components/${componentId}/hydrate/upcoming-invoice`;
 
             if (resolvedUrl.includes(targetPath)) {
                 try {
@@ -221,8 +231,11 @@ function EnsurePlanControls() {
             return originalFetch(input, init);
         };
 
+        window.__schematicInvoicePatched = true;
+
         return () => {
             window.fetch = originalFetch;
+            delete window.__schematicInvoicePatched;
         };
     }, [data?.component?.id, fallbackInvoice]);
 
