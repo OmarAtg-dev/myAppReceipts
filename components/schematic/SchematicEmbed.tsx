@@ -8,6 +8,49 @@ import {
 
 const schematicPublishableKey = process.env.NEXT_PUBLIC_SCHEMATIC_KEY;
 
+function coerceDate(value?: number | string | Date | null) {
+    if (!value) {
+        return null;
+    }
+    if (value instanceof Date) {
+        return value;
+    }
+    const numericValue =
+        typeof value === "string" ? Number(value) : typeof value === "number" ? value : NaN;
+    if (!Number.isNaN(numericValue)) {
+        return new Date(numericValue);
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizeSubscription(
+    source: any,
+    fallbackPrice?: { currency?: string; interval?: string; price?: number },
+) {
+    if (!source) {
+        return undefined;
+    }
+
+    return {
+        cancelAt: coerceDate(source.cancelAt),
+        cancelAtPeriodEnd: Boolean(source.cancelAtPeriodEnd),
+        currency: source.currency ?? fallbackPrice?.currency ?? "usd",
+        customerExternalId: source.customerExternalId ?? "unknown-company",
+        discounts: source.discounts ?? [],
+        interval: source.interval ?? fallbackPrice?.interval ?? "month",
+        latestInvoice: source.latestInvoice,
+        paymentMethod: source.paymentMethod,
+        products: source.products ?? [],
+        status: source.status ?? "active",
+        subscriptionExternalId:
+            source.subscriptionExternalId ?? source.id ?? `synthetic-${fallbackPrice?.interval ?? "plan"}`,
+        totalPrice:
+            typeof source.totalPrice === "number" ? source.totalPrice : fallbackPrice?.price ?? 0,
+        trialEnd: coerceDate(source.trialEnd),
+    };
+}
+
 function EnsurePlanControls() {
     const { data, setData } = useEmbed();
 
@@ -37,32 +80,44 @@ function EnsurePlanControls() {
             fallbackPlan?.yearlyPrice ??
             fallbackPlan?.oneTimePrice;
 
-        const shouldSynthesizeSubscription =
-            !data.subscription && fallbackPlan && fallbackPrice && !fallbackPlan.isFree;
+        const derivedCompanySubscription =
+            normalizeSubscription(
+                data.company?.billingSubscription ?? data.company?.billingSubscriptions?.[0],
+                fallbackPrice,
+            ) ?? undefined;
 
-        if (shouldSynthesizeSubscription) {
+        const shouldSynthesizeSubscription =
+            !data.subscription &&
+            !derivedCompanySubscription &&
+            fallbackPlan &&
+            fallbackPrice &&
+            !fallbackPlan.isFree;
+
+        if (!data.subscription && derivedCompanySubscription) {
+            updates.subscription = derivedCompanySubscription;
+            shouldUpdate = true;
+        } else if (!data.subscription && shouldSynthesizeSubscription) {
             console.warn(
                 "Schematic hydrate response missing subscription; creating fallback so the unsubscribe button stays visible.",
             );
-
-            updates.subscription = {
-                cancelAt: null,
-                cancelAtPeriodEnd: false,
-                currency: fallbackPrice.currency ?? "usd",
-                customerExternalId:
-                    data.company?.keys?.[0]?.value ??
-                    data.company?.id ??
-                    "synthetic-company",
-                discounts: [],
-                interval: fallbackPrice.interval ?? "month",
-                products: [],
-                status: "active",
-                subscriptionExternalId:
-                    data.company?.plan?.billingProductExternalId ??
-                    `synthetic-${fallbackPlan.id}`,
-                totalPrice: fallbackPrice.price ?? 0,
-                trialEnd: null,
-            };
+            updates.subscription = normalizeSubscription(
+                {
+                    cancelAt: null,
+                    cancelAtPeriodEnd: false,
+                    currency: fallbackPrice?.currency,
+                    customerExternalId:
+                        data.company?.keys?.[0]?.value ?? data.company?.id ?? "synthetic-company",
+                    discounts: [],
+                    interval: fallbackPrice?.interval,
+                    products: fallbackPlan ? [{ name: fallbackPlan.name }] : [],
+                    status: "active",
+                    subscriptionExternalId:
+                        data.company?.plan?.billingProductExternalId ?? `synthetic-${fallbackPlan?.id}`,
+                    totalPrice: fallbackPrice?.price,
+                    trialEnd: null,
+                },
+                fallbackPrice,
+            );
             shouldUpdate = true;
         }
 
