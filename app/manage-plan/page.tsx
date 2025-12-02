@@ -4,8 +4,6 @@ import React from "react";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const fetchCache = "force-no-store";
-
 function ManagePlan() {
     return (
         <div className="container xl:max-w-5xl mx-auto p-4 md:p-0">
