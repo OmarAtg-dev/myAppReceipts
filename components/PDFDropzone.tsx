@@ -10,14 +10,13 @@ import {
 import { useSchematicEntitlement } from "@schematichq/schematic-react";
 import { AlertCircle, CheckCircle, CloudUpload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { userAgent } from "next/server";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "./ui/button";
 
 
 function PDFDropzone() {
     const [isUploading, setIsUploading] = useState(false);
-    const [uploadedFiles, setUploadedFiles] = useState<String[]>([]);
+    const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();

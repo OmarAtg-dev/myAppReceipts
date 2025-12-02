@@ -19,7 +19,7 @@ function Header() {
                     <Link href="/receipts">
                         <Button variant="outline">My Receipts</Button>
                     </Link>
-                    <Link href="/manage-plan">
+                    <Link href="/manage-plan" prefetch={false}>
                         <Button>Manage plan</Button>
                     </Link>
                     <UserButton />
