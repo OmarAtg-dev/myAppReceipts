@@ -15,7 +15,7 @@ console.log("[inngest] registering agents:", {
 
 const agentNetwork = createNetwork({
     name: "Agent Team",
-    agents: [databaseAgent, receiptScanningAgent],
+    agents: [receiptScanningAgent, databaseAgent],
     defaultModel: anthropic({
         // model: "claude-3-5-sonnet-latest",
         model: "claude-3-5-haiku-latest", // Use the exact dated version
@@ -28,17 +28,21 @@ const agentNetwork = createNetwork({
         const savedToDatabase = network.state.data["saved-to-database"];
 
         if (savedToDatabase !== undefined) {
+            // console.log('savedToDatabase .....' + savedToDatabase);
             // Terminate the agent process if the data has been saved to the database
             return undefined;
         }
 
-        // Return the agents directly - this allows the network to route to them properly
-        return Array.from(network.agents.values());
+        // Return the agents directly - this allows the network to route to them 
+        // getDefaultRoutingAgent(); 
+        // console.log('savedToDatabase .....' ,getDefaultRoutingAgent() );
+         return Array.from(network.agents.values());
+        // return getDefaultRoutingAgent(); 
     },
 });
 
 export const server = createServer({
-    agents: [databaseAgent, receiptScanningAgent],
+    agents: [receiptScanningAgent,databaseAgent],
     networks: [agentNetwork],
 });
 

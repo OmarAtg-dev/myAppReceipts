@@ -12,8 +12,8 @@ const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 const SchematicWrapped = ({ children }: { children: React.ReactNode }) => {
   const { identify } = useSchematicEvents();
   const { user } = useUser();
-
-  useEffect(() => {
+  console.log("userId >>>    ",user?.id);
+   useEffect(() => {
     const userName =
       user?.username ??
       user?.fullName ??
@@ -47,7 +47,7 @@ export default function ConvexClientProvider({
 }) {
   return (
     <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-      <SchematicProvider publishableKey={process.env.NEXT_PUBLIC_SCHEMATIC_KEY!}>
+      <SchematicProvider publishableKey={process.env.NEXT_PUBLIC_SCHEMATIC_KEY!}  debug={process.env.NEXT_PUBLIC_SCHEMATIC_KEY === 'development'}>
         <SchematicWrapped>
           {children}
         </SchematicWrapped>

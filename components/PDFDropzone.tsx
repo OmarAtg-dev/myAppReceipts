@@ -17,7 +17,7 @@ import { Button } from "./ui/button";
 
 function PDFDropzone() {
     const [isUploading, setIsUploading] = useState(false);
-    const [uploadedFiles, setUploadedFiles] = useState<String[]>([]);
+    const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
@@ -27,7 +27,7 @@ function PDFDropzone() {
         featureUsageExceeded,
         featureAllocation,
     } = useSchematicEntitlement("scans"); // scans is copied from schematichq
-    // console.log('featureUsage >> '+  featureUsage);
+    console.log('isFeatureEnabled >> '+  isFeatureEnabled);
     // console.log('featureAllocation >> '+  featureAllocation);
     // console.log('featureUsageExceeded >> '+  featureUsageExceeded);
     // const [canUpload,setCanUpload] = useState(false);

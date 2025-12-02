@@ -8,6 +8,9 @@ function SchematicEmbed({
     accessToken: string;
     componentId: string;
 }) {
+
+    console.log("Component ID is", componentId);
+    console.log("Access Token is", accessToken);
     return (
         <EmbedProvider>
             <SchematicEmbedComponent accessToken={accessToken} id={componentId} />
