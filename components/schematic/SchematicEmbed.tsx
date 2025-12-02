@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import {
     EmbedProvider,
     SchematicEmbed as SchematicEmbedComponent,
@@ -54,6 +54,67 @@ function normalizeSubscription(
 function EnsurePlanControls() {
     const { data, setData } = useEmbed();
 
+    const fallbackPlan = useMemo(() => {
+        return data?.activePlans?.find((plan) => plan.current) ?? data?.activePlans?.[0];
+    }, [data?.activePlans]);
+
+    const fallbackPrice = useMemo(() => {
+        if (!fallbackPlan) {
+            return undefined;
+        }
+        return (
+            fallbackPlan.monthlyPrice ??
+            fallbackPlan.yearlyPrice ??
+            fallbackPlan.oneTimePrice ??
+            undefined
+        );
+    }, [fallbackPlan]);
+
+    const derivedCompanySubscription = useMemo(
+        () =>
+            normalizeSubscription(
+                data?.company?.billingSubscription ?? data?.company?.billingSubscriptions?.[0],
+                fallbackPrice,
+            ),
+        [
+            data?.company?.billingSubscription,
+            data?.company?.billingSubscriptions,
+            fallbackPrice,
+        ],
+    );
+
+    const syntheticCompanyId =
+        data?.company?.keys?.[0]?.value ?? data?.company?.id ?? "synthetic-company";
+
+    const fallbackInvoice = useMemo(() => {
+        if (!fallbackPrice?.price) {
+            return null;
+        }
+        const now = new Date();
+        const dueDate = new Date(now.getTime());
+        dueDate.setDate(dueDate.getDate() + 30);
+        return {
+            amountDue: fallbackPrice.price,
+            amountPaid: 0,
+            amountRemaining: fallbackPrice.price,
+            collectionMethod: "charge_automatically",
+            companyId: syntheticCompanyId,
+            createdAt: now.toISOString(),
+            currency: fallbackPrice.currency ?? "usd",
+            customerExternalId: syntheticCompanyId,
+            dueDate: dueDate.toISOString(),
+            environmentId: "synthetic",
+            id: `synthetic-invoice-${now.getTime()}`,
+            number: `INV-${now.getTime()}`,
+            status: "draft",
+            subtotal: fallbackPrice.price,
+            total: fallbackPrice.price,
+            periodStart: now.toISOString(),
+            periodEnd: dueDate.toISOString(),
+            lines: [],
+        };
+    }, [fallbackPrice?.price, fallbackPrice?.currency, syntheticCompanyId]);
+
     useEffect(() => {
         if (!data) {
             return;
@@ -73,25 +134,9 @@ function EnsurePlanControls() {
             shouldUpdate = true;
         }
 
-        const fallbackPlan =
-            data.activePlans?.find((plan) => plan.current) ?? data.activePlans?.[0];
-        const fallbackPrice =
-            fallbackPlan?.monthlyPrice ??
-            fallbackPlan?.yearlyPrice ??
-            fallbackPlan?.oneTimePrice;
-
-        const derivedCompanySubscription =
-            normalizeSubscription(
-                data.company?.billingSubscription ?? data.company?.billingSubscriptions?.[0],
-                fallbackPrice,
-            ) ?? undefined;
-
+        const hasPaidPlan = fallbackPlan && fallbackPrice && !fallbackPlan.isFree;
         const shouldSynthesizeSubscription =
-            !data.subscription &&
-            !derivedCompanySubscription &&
-            fallbackPlan &&
-            fallbackPrice &&
-            !fallbackPlan.isFree;
+            !data.subscription && !derivedCompanySubscription && hasPaidPlan;
 
         if (!data.subscription && derivedCompanySubscription) {
             updates.subscription = derivedCompanySubscription;
@@ -127,7 +172,59 @@ function EnsurePlanControls() {
                 ...updates,
             });
         }
-    }, [data, setData]);
+    }, [data, setData, fallbackPlan, fallbackPrice, derivedCompanySubscription]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+        if (!data?.component?.id || !fallbackInvoice) {
+            return;
+        }
+
+        const originalFetch = window.fetch.bind(window);
+        const targetPath = `/components/${data.component.id}/hydrate/upcoming-invoice`;
+        const fallbackPayload = JSON.stringify({ data: fallbackInvoice });
+
+        window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            const resolvedUrl =
+                typeof input === "string"
+                    ? input
+                    : input instanceof Request
+                    ? input.url
+                    : input instanceof URL
+                    ? input.toString()
+                    : "";
+
+            if (resolvedUrl.includes(targetPath)) {
+                try {
+                    const response = await originalFetch(input, init);
+                    if (response.status !== 404) {
+                        return response;
+                    }
+                    console.warn(
+                        "Schematic upcoming invoice endpoint returned 404; providing fallback invoice.",
+                    );
+                } catch (error) {
+                    console.warn(
+                        "Schematic upcoming invoice endpoint failed; providing fallback invoice.",
+                        error,
+                    );
+                }
+
+                return new Response(fallbackPayload, {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                });
+            }
+
+            return originalFetch(input, init);
+        };
+
+        return () => {
+            window.fetch = originalFetch;
+        };
+    }, [data?.component?.id, fallbackInvoice]);
 
     return null;
 }
