@@ -4,6 +4,33 @@ import convex from "@/lib/convexClient";
 import { client } from "@/lib/schematic";
 import { createAgent, createTool, openai } from "@inngest/agent-kit";
 import { z } from "zod";
+import { StructuredReceiptData } from "@/types/structuredReceipt";
+
+const structuredReceiptDataZ = z.object({
+    entreprise: z.string(),
+    description: z.string(),
+    telephone: z.string(),
+    email: z.string(),
+    numero_pesee: z.string(),
+    date_entree: z.string(),
+    heure_entree: z.string(),
+    date_sortie: z.string(),
+    heure_sortie: z.string(),
+    matricule: z.string(),
+    client: z.string(),
+    transporteur: z.string(),
+    destination: z.string(),
+    bon_livraison: z.string(),
+    produit: z.string(),
+    poids_entree_kg: z.number().nullable().optional(),
+    poids_sortie_kg: z.number().nullable().optional(),
+    poids_net_kg: z.number().nullable().optional(),
+    installateur: z.object({
+        nom: z.string(),
+        telephone: z.string(),
+        email: z.string(),
+    }),
+});
 
 const saveToDatabaseTool = createTool({
     name: "save_to_database",
@@ -14,41 +41,25 @@ const saveToDatabaseTool = createTool({
             "The readable display name of the receipt to show in the UI. If the file name is not human readable, use this to give a more readable name."
         ),
         receiptId: z.string().describe("The ID of the receipt to update"),
-        merchantName: z.string(),
-        merchantAddress: z.string(),
-        merchantContact: z.string(),
-        transactionDate: z.string(),
-        transactionAmount: z.string().describe(
-            "The total amount of the transaction, summing all the items on the receipt."
-        ),
-        receiptSummary: z.string().describe(
-            "A summary of the receipt, including the merchant name, address, contact, transaction date, transaction amount, and currency. Include a human readable summary of the receipt. Mention both invoice number and receipt number if both are present. Include some key details about the items on the receipt, this is a special featured summary so it should include some key details about the items on the receipt with some context."
-        ),
-        currency: z.string(),
-        items: z.array(
-            z.object({
-                name: z.string(),
-                quantity: z.number(),
-                unitPrice: z.number(),
-                totalPrice: z.number(),
-            }).describe(
-                "An array of items on the receipt. Include the name, quantity, unit price, and total price of each item."
-            ),
+      parsedData: structuredReceiptDataZ.describe(
+            "The structured JSON payload that must exactly match the requested schema."
         ),
     }),
     handler: async (params, context) => {
         const {
             fileDisplayName,
             receiptId,
-            merchantName,
-            merchantAddress,
-            merchantContact,
-            transactionDate,
-            transactionAmount,
-            receiptSummary,
-            currency,
-            items,
+            parsedData,
         } = params;
+        const normalizedParsedData: StructuredReceiptData = {
+            ...parsedData,
+            poids_entree_kg:
+                parsedData.poids_entree_kg ?? undefined,
+            poids_sortie_kg:
+                parsedData.poids_sortie_kg ?? undefined,
+            poids_net_kg:
+                parsedData.poids_net_kg ?? undefined,
+        };
 
         const result = await context.step?.run(
             "save-receipt-to-database",
@@ -62,14 +73,8 @@ const saveToDatabaseTool = createTool({
                         {
                             id: receiptId as Id<"receipts">,
                             fileDisplayName,
-                            merchantName,
-                            merchantAddress,
-                            merchantContact,
-                            transactionDate,
-                            transactionAmount,
-                            receiptSummary,
-                            currency,
-                            items,
+                            receiptSummary: normalizedParsedData.description,
+                            parsedData: normalizedParsedData,
 
                         }
                     );
@@ -88,13 +93,7 @@ const saveToDatabaseTool = createTool({
                         addedToDB: "Success",
                         receiptId,
                         fileDisplayName,
-                        merchantAddress,
-                        merchantContact,
-                        transactionDate,
-                        transactionAmount,
-                        receiptSummary,
-                        currency,
-                        items,
+                        parsedData: normalizedParsedData,
 
                     };
                 } catch (error) {

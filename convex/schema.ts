@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { structuredReceiptDataSchema } from "./receiptData";
 
 // The schema is entirely optional.
 // You can delete this file (schema.ts) and the
@@ -16,21 +17,6 @@ export default defineSchema({
     mimeType: v.string(),
     status: v.string(), // 'pending', 'processed', 'error'
 
-    // Fields for extracted data
-    merchantName: v.optional(v.string()),
-    merchantAddress: v.optional(v.string()),
-    merchantContact: v.optional(v.string()),
-    transactionDate: v.optional(v.string()),
-    transactionAmount: v.optional(v.string()),
-    currency: v.optional(v.string()),
-    receiptSummary: v.optional(v.string()),
-    items: v.array(
-      v.object({
-        name: v.string(),
-        quantity: v.number(),
-        unitPrice: v.number(),
-        totalPrice: v.number(),
-      }),
-    ),
+    parsedData: v.optional(structuredReceiptDataSchema),
   }),
 });

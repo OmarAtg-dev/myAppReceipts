@@ -55,10 +55,11 @@ export const processReceiptFile = inngest.createFunction(
             receiptId: string;
             mimeType?: string;
           };
-      const result = await agentNetwork.run(
-        `Extract the key data from this receipt file (MIME type: ${mimeType ?? "unknown"}): ${url}.
-Use the "analyze-receipt-file" tool with both the fileUrl and mimeType so you can read the binary contents, 
-then save the structured data to the database using the receiptId: ${receiptId}.`,    );
+          const result = await agentNetwork.run(
+            `Extract the key data from this receipt file (MIME type: ${mimeType ?? "unknown"}): ${url}.
+          Use the "analyze-receipt-file" tool with the provided fileUrl so you can read the binary contents, 
+          then save the structured data to the database using the receiptId: ${receiptId}.`,
+          );
   
       return result.state.data["receipt"];
     },
