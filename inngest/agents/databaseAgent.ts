@@ -4,7 +4,6 @@ import convex from "@/lib/convexClient";
 import { client } from "@/lib/schematic";
 import { createAgent, createTool, openai } from "@inngest/agent-kit";
 import { z } from "zod";
-import { StructuredReceiptData } from "@/types/structuredReceipt";
 
 const structuredReceiptDataZ = z.object({
     entreprise: z.string(),
@@ -22,9 +21,9 @@ const structuredReceiptDataZ = z.object({
     destination: z.string(),
     bon_livraison: z.string(),
     produit: z.string(),
-    poids_entree_kg: z.number().nullable().optional(),
-    poids_sortie_kg: z.number().nullable().optional(),
-    poids_net_kg: z.number().nullable().optional(),
+    poids_entree_kg: z.number().nullable(),
+    poids_sortie_kg: z.number().nullable(),
+    poids_net_kg: z.number().nullable(),
     installateur: z.object({
         nom: z.string(),
         telephone: z.string(),
@@ -41,7 +40,7 @@ const saveToDatabaseTool = createTool({
             "The readable display name of the receipt to show in the UI. If the file name is not human readable, use this to give a more readable name."
         ),
         receiptId: z.string().describe("The ID of the receipt to update"),
-      parsedData: structuredReceiptDataZ.describe(
+        parsedData: structuredReceiptDataZ.describe(
             "The structured JSON payload that must exactly match the requested schema."
         ),
     }),
@@ -51,15 +50,6 @@ const saveToDatabaseTool = createTool({
             receiptId,
             parsedData,
         } = params;
-        const normalizedParsedData: StructuredReceiptData = {
-            ...parsedData,
-            poids_entree_kg:
-                parsedData.poids_entree_kg ?? undefined,
-            poids_sortie_kg:
-                parsedData.poids_sortie_kg ?? undefined,
-            poids_net_kg:
-                parsedData.poids_net_kg ?? undefined,
-        };
 
         const result = await context.step?.run(
             "save-receipt-to-database",
@@ -73,9 +63,8 @@ const saveToDatabaseTool = createTool({
                         {
                             id: receiptId as Id<"receipts">,
                             fileDisplayName,
-                            receiptSummary: normalizedParsedData.description,
-                            parsedData: normalizedParsedData,
-
+                            receiptSummary: parsedData.description,
+                            parsedData,
                         }
                     );
                     //Track event in schematic
@@ -93,7 +82,7 @@ const saveToDatabaseTool = createTool({
                         addedToDB: "Success",
                         receiptId,
                         fileDisplayName,
-                        parsedData: normalizedParsedData,
+                        parsedData,
 
                     };
                 } catch (error) {

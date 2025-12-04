@@ -29,13 +29,23 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   )
 }
 
-function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
+function TableBody({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<"tbody">) {
+  const sanitizedChildren = React.Children.toArray(children).filter(
+    (child) => !(typeof child === "string" && child.trim().length === 0)
+  )
+
   return (
     <tbody
       data-slot="table-body"
       className={cn("[&_tr:last-child]:border-0", className)}
       {...props}
-    />
+      >
+      {sanitizedChildren}
+    </tbody>
   )
 }
 

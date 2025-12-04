@@ -13,6 +13,8 @@ import { useEffect, useState } from "react";
 function Receipt() {
     const params = useParams<{ id: string }>();
     const [receiptId, setReceiptId] = useState<Id<"receipts"> | null>(null);
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportError, setExportError] = useState<string | null>(null);
     const router = useRouter();
     const isSummariesEnabled = useSchematicFlag("summary");
 
@@ -78,6 +80,32 @@ function Receipt() {
     // Check if extracted data exists
     const hasExtractedData = !!parsedData;
     const summaryText = parsedData?.description || receipt.receiptSummary;
+    const handleExcelExport = async () => {
+        if (!receipt) return;
+        setExportError(null);
+        setIsExporting(true);
+        try {
+            const { generateReceiptWorkbookBuffer } = await import("@/lib/excelExport");
+            const buffer = await generateReceiptWorkbookBuffer(receipt);
+            const blob = new Blob([buffer], {
+                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            const sanitizedName = (receipt.fileDisplayName || receipt.fileName).replace(/\.[^.]+$/, "");
+            link.href = url;
+            link.download = `${sanitizedName || "receipt"}-structured.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Failed to export Excel", error);
+            setExportError("Unable to generate the Excel file. Please try again.");
+        } finally {
+            setIsExporting(false);
+        }
+    };
     return (
         <div className="container mx-auto py-10 px-4">
             <div className="max-w-4xl mx-auto">
@@ -166,17 +194,38 @@ function Receipt() {
                                 <div className="text-center">
                                     <FileText className="h-16 w-16 text-blue-500 mx-auto" />
                                     <p className="mt-4 text-sm text-gray-500">Receipt File</p>
+                                    <div className="flex flex-col items-center space-y-3 mt-4">
+                                        {downloadUrl && (
+                                            <a
+                                                href={downloadUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="px-4 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 inline-block"
+                                            >
+                                                View File
+                                            </a>
+                                        )}
 
-                                    {downloadUrl && (
-                                        <a
-                                            href={downloadUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="mt-4 px-4 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 inline-block"
+                                        <button
+                                            onClick={handleExcelExport}
+                                            disabled={isExporting}
+                                            className={`px-4 py-2 text-sm rounded inline-flex items-center justify-center ${
+                                                isExporting
+                                                    ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                                                    : "bg-emerald-500 text-white hover:bg-emerald-600"
+                                            }`}
                                         >
-                                             View File
-                                        </a>
-                                    )}
+                                            {isExporting ? "Generating Excel…" : "Download Excel"}
+                                        </button>
+
+                                        <p className="text-xs text-gray-500 text-center">
+                                            Generates a structured workbook with green table borders, totals, and all parsed values.
+                                        </p>
+
+                                        {exportError && (
+                                            <p className="text-xs text-red-500 text-center">{exportError}</p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
