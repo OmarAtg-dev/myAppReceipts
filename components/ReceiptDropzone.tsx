@@ -1,5 +1,5 @@
 "use client";
-import { uploadPDF } from "@/actions/uploadPDF";
+import { uploadReceipt } from "@/actions/uploadReceipt";
 import { useUser } from "@clerk/nextjs";
 import {
     DndContext,
@@ -10,12 +10,30 @@ import {
 import { useSchematicEntitlement } from "@schematichq/schematic-react";
 import { AlertCircle, CheckCircle, CloudUpload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { userAgent } from "next/server";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "./ui/button";
 
+const ACCEPTED_FILE_TYPES = new Set([
+    "application/pdf",
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+]);
 
-function PDFDropzone() {
+const ACCEPTED_EXTENSIONS = [".pdf", ".jpeg", ".jpg", ".png"];
+
+const ACCEPT_ATTRIBUTE =
+    "application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg";
+
+function isSupportedFile(file: File) {
+    const fileName = file.name?.toLowerCase() ?? "";
+    return (
+        ACCEPTED_FILE_TYPES.has(file.type) ||
+        ACCEPTED_EXTENSIONS.some((ext) => fileName.endsWith(ext))
+    );
+}
+
+function ReceiptDropzone() {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -26,66 +44,63 @@ function PDFDropzone() {
         value: isFeatureEnabled,
         featureUsageExceeded,
         featureAllocation,
-    } = useSchematicEntitlement("scans"); // scans is copied from schematichq
-    console.log('isFeatureEnabled >> '+  isFeatureEnabled);
-    // console.log('featureAllocation >> '+  featureAllocation);
-    // console.log('featureUsageExceeded >> '+  featureUsageExceeded);
-    // const [canUpload,setCanUpload] = useState(false);
-    // Set up sensors for drag detection
+    } = useSchematicEntitlement("scans");
+
     const sensors = useSensors(useSensor(PointerSensor));
 
     const handleUpload = useCallback(
         async (files: FileList | File[]) => {
-            // console.log('files >> ', files);
             if (!user) {
-                alert("please sign in to upload files");
+                alert("Please sign in to upload files");
                 return;
             }
-            //only upload pdf files 
+
             const fileArray = Array.from(files);
-            const pdfFiles = fileArray.filter(
-                (file) =>
-                    file.type === "application/pdf" ||
-                    file.name.toLowerCase().endsWith(".pdf"),
-            );
-            if (pdfFiles.length === 0) {
-                alert("Please drop only PDF files.");
+            const receiptFiles = fileArray.filter(isSupportedFile);
+
+            if (receiptFiles.length === 0) {
+                alert("Please drop only PDF, JPG, or PNG receipt files.");
                 return;
             }
+
+            if (receiptFiles.length !== fileArray.length) {
+                alert("Unsupported files were skipped. Only PDF, JPG, or PNG files are processed.");
+            }
+
             setIsUploading(true);
             try {
-                //Upload files
                 const newUploadedFiles: string[] = [];
 
-                for (const file of pdfFiles) {
-                    //Create a FormData  object to use with the server action
+                for (const file of receiptFiles) {
                     const formData = new FormData();
                     formData.append("file", file);
 
-                    //Call the server action to handle the upload
-                    const result = await uploadPDF(formData);
+                    const result = await uploadReceipt(formData);
                     if (!result.success) {
                         throw new Error(result.error);
-
                     }
                     newUploadedFiles.push(file.name);
                 }
                 setUploadedFiles((prev) => [...prev, ...newUploadedFiles]);
 
-                //Clear uploaded files list after 5 seconds
                 setTimeout(() => {
                     setUploadedFiles([]);
                 }, 5000);
                 router.push("/receipts");
             } catch (error) {
-                console.error("Uploaded failed: ", error);
-                alert(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+                console.error("Upload failed: ", error);
+                alert(
+                    `Upload failed: ${
+                        error instanceof Error ? error.message : "Unknown error"
+                    }`,
+                );
             } finally {
                 setIsUploading(false);
             }
-        }, [user, router],
+        },
+        [user, router],
     );
-    // Handle file drop via native browser events for better PDF support 
+
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDraggingOver(true);
@@ -96,19 +111,20 @@ function PDFDropzone() {
         setIsDraggingOver(false);
     }, []);
 
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDraggingOver(false);
-        if (!user) {
-            alert("please sign in to upload files");
-            return;
-        }
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleUpload(e.dataTransfer.files);
-        }
-    }, [user, handleUpload],
+    const handleDrop = useCallback(
+        (e: React.DragEvent) => {
+            e.preventDefault();
+            setIsDraggingOver(false);
+            if (!user) {
+                alert("Please sign in to upload files");
+                return;
+            }
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleUpload(e.dataTransfer.files);
+            }
+        },
+        [user, handleUpload],
     );
-
 
     const handleFileInputChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,11 +135,10 @@ function PDFDropzone() {
         [handleUpload],
     );
 
-
     const triggerFileInput = useCallback(() => {
         fileInputRef.current?.click();
-
     }, []);
+
     const isUserSignedIn = !!user;
     const canUpload = isUserSignedIn && isFeatureEnabled;
 
@@ -134,13 +149,15 @@ function PDFDropzone() {
                     onDragOver={canUpload ? handleDragOver : undefined}
                     onDragLeave={canUpload ? handleDragLeave : undefined}
                     onDrop={canUpload ? handleDrop : (e) => e.preventDefault()}
-                    className={`border - 2 border-dashed rounded-lg p-8 text-center transition-colors ${isDraggingOver ? "border-blue-500 bg-blue-50" : "border-gray-300"
-                        } ${!canUpload ? "opacity-70 cursor-not-allowed" : ""}`}
+                    className={`border - 2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                        isDraggingOver ? "border-blue-500 bg-blue-50" : "border-gray-300"
+                    } ${!canUpload ? "opacity-70 cursor-not-allowed" : ""}`}
                 >
                     {isUploading ? (
                         <div className="flex flex-col items-center">
                             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mb-2"></div>
-                            <p>Uploading...</p>  </div>
+                            <p>Uploading...</p>
+                        </div>
                     ) : !isUserSignedIn ? (
                         <>
                             <CloudUpload className="mx-auto h-12 w-12 text-gray-400" />
@@ -152,12 +169,12 @@ function PDFDropzone() {
                         <>
                             <CloudUpload className="mx-auto h-12 w-12 text-gray-400" />
                             <p className="mt-2 text-sm text-gray-600">
-                                Drag and drop PDF files here, or click to select files
+                                Drag and drop receipt PDFs or images (JPG, PNG), or click to select
                             </p>
                             <input
                                 type="file"
                                 ref={fileInputRef}
-                                accept="application/pdf,.pdf"
+                                accept={ACCEPT_ATTRIBUTE}
                                 multiple
                                 onChange={handleFileInputChange}
                                 className="hidden"
@@ -170,23 +187,19 @@ function PDFDropzone() {
                             >
                                 {isFeatureEnabled ? "Select files" : "Upgrade to upload"}
                             </Button>
-
                         </>
-
                     )}
                 </div>
-
 
                 <div className="mt-4">
                     {featureUsageExceeded && (
                         <div className="flex items-center p-3 bg-red-50 border border-red-200 rounde-md text-red-600">
                             <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
                             <span>
-                                You have exeeded your limit of {featureAllocation} scans.
+                                You have exceeded your limit of {featureAllocation} scans.
                                 Please upgrade to continue.
                             </span>
                         </div>
-
                     )}
                 </div>
 
@@ -204,7 +217,7 @@ function PDFDropzone() {
                     </div>
                 )}
             </div>
-        </DndContext >
+        </DndContext>
     );
 }
-export default PDFDropzone;
+export default ReceiptDropzone;

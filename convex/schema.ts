@@ -1,5 +1,32 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+const weightField = v.union(v.number(), v.null());
+
+const structuredReceiptDataSchema = v.object({
+  entreprise: v.string(),
+  description: v.string(),
+  telephone: v.string(),
+  email: v.string(),
+  numero_pesee: v.string(),
+  date_entree: v.string(),
+  heure_entree: v.string(),
+  date_sortie: v.string(),
+  heure_sortie: v.string(),
+  matricule: v.string(),
+  client: v.string(),
+  transporteur: v.string(),
+  destination: v.string(),
+  bon_livraison: v.string(),
+  produit: v.string(),
+  poids_entree_kg: weightField,
+  poids_sortie_kg: weightField,
+  poids_net_kg: weightField,
+  installateur: v.object({
+    nom: v.string(),
+    telephone: v.string(),
+    email: v.string(),
+  }),
+});
 
 // The schema is entirely optional.
 // You can delete this file (schema.ts) and the
@@ -16,21 +43,17 @@ export default defineSchema({
     mimeType: v.string(),
     status: v.string(), // 'pending', 'processed', 'error'
 
-    // Fields for extracted data
-    merchantName: v.optional(v.string()),
-    merchantAddress: v.optional(v.string()),
-    merchantContact: v.optional(v.string()),
-    transactionDate: v.optional(v.string()),
-    transactionAmount: v.optional(v.string()),
-    currency: v.optional(v.string()),
     receiptSummary: v.optional(v.string()),
-    items: v.array(
-      v.object({
-        name: v.string(),
-        quantity: v.number(),
-        unitPrice: v.number(),
-        totalPrice: v.number(),
-      }),
+    parsedData: v.optional(structuredReceiptDataSchema),
+    items: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          quantity: v.number(),
+          unitPrice: v.number(),
+          totalPrice: v.number(),
+        }),
+      ),
     ),
   }),
 });
