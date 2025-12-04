@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { StructuredReceiptData } from "../types/structuredReceipt";
 
+const numberOrNull = v.union(v.number(), v.null());
+
 export const structuredReceiptDataSchema = v.object({
   entreprise: v.string(),
   description: v.string(),
@@ -17,9 +19,9 @@ export const structuredReceiptDataSchema = v.object({
   destination: v.string(),
   bon_livraison: v.string(),
   produit: v.string(),
-  poids_entree_kg: v.optional(v.number()),
-  poids_sortie_kg: v.optional(v.number()),
-  poids_net_kg: v.optional(v.number()),
+  poids_entree_kg: numberOrNull,
+  poids_sortie_kg: numberOrNull,
+  poids_net_kg: numberOrNull,
   installateur: v.object({
     nom: v.string(),
     telephone: v.string(),

@@ -14,9 +14,9 @@ export interface StructuredReceiptData {
   destination: string;
   bon_livraison: string;
   produit: string;
-  poids_entree_kg?: number | null | undefined;
-  poids_sortie_kg?: number | null | undefined;
-  poids_net_kg?: number | null | undefined;
+  poids_entree_kg: number | null;
+  poids_sortie_kg: number | null;
+  poids_net_kg: number | null;
   installateur: {
     nom: string;
     telephone: string;
