@@ -31,6 +31,7 @@
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
+    "xlsx-js-style": "^1.2.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -53,6 +54,5 @@
       "esbuild",
       "@tailwindcss/oxide"
     ]
-  
   }
 }
