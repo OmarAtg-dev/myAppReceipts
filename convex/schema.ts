@@ -19,5 +19,15 @@ export default defineSchema({
 
     receiptSummary: v.optional(v.string()),
     parsedData: v.optional(structuredReceiptDataSchema),
+    items: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          quantity: v.number(),
+          unitPrice: v.number(),
+          totalPrice: v.number(),
+        }),
+      ),
+    ),
   }),
 });
