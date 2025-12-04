@@ -165,6 +165,7 @@ export const deleteReceipt = mutation({
 export const updateReceiptWithExtractedData = mutation({
     args: {
         id: v.id("receipts"),
+        receiptSummary: v.string(),
         fileDisplayName: v.string(),
         parsedData: structuredReceiptDataSchema,
     },

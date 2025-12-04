@@ -16,7 +16,7 @@ export default defineSchema({
     size: v.number(),
     mimeType: v.string(),
     status: v.string(), // 'pending', 'processed', 'error'
-
+    receiptSummary: v.optional(v.string()),
     parsedData: v.optional(structuredReceiptDataSchema),
   }),
 });
