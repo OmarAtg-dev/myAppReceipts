@@ -2,13 +2,13 @@ import { createAgent, createTool, openai, anthropic } from "@inngest/agent-kit";
 import { z } from "zod";
 
 
-const parsePdfTool = createTool({
-    name: "parse-pdf",
-    description: "Analyzes the given PDF",
+const analyzeReceiptTool = createTool({
+    name: "analyze-receipt-file",
+    description: "Analyzes the given receipt file (PDF or image)",
     parameters: z.object({
-        pdfUrl: z.string(),
+        fileUrl: z.string(),
     }),
-    handler: async ({ pdfUrl }, { step }) => {
+    handler: async ({ fileUrl }, { step }) => {
 
         try {
 
@@ -30,7 +30,7 @@ const parsePdfTool = createTool({
                                 type: "document",
                                 source: {
                                     type: "url",
-                                    url: pdfUrl,
+                                    url: fileUrl,
                                 },
                             },
                             {
@@ -98,5 +98,5 @@ export const receiptScanningAgent = createAgent({
             max_completion_tokens: 3094,
         },
     }),
-    tools: [parsePdfTool],
+    tools: [analyzeReceiptTool],
 });

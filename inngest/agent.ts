@@ -46,12 +46,12 @@ export const server = createServer({
     networks: [agentNetwork],
 });
 
-export const extractAndSavePDF = inngest.createFunction(
-    { id: "Extract PDF and Save in Database" },
-    { event: Events.EXTRACT_DATA_FROM_PDF_AND_SAVE_TO_DATABASE },
+export const processReceiptFile = inngest.createFunction(
+    { id: "Process Receipt File and Save in Database" },
+    { event: Events.PROCESS_RECEIPT_FILE_AND_SAVE_TO_DATABASE },
     async ({ event }) => {
       const result = await agentNetwork.run(
-        `Extract the key data from this pdf: ${event.data.url}. Once the data is extracted, save it to the database using the receiptId: ${event.data.receiptId}.`,
+        `Extract the key data from this receipt file (PDF or image): ${event.data.url}. Once the data is extracted, save it to the database using the receiptId: ${event.data.receiptId}.`,
       );
   
       return result.state.data["receipt"];
