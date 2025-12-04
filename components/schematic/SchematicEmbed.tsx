@@ -66,9 +66,9 @@ function EnsurePlanControls() {
             shouldUpdate = true;
         }
 
-        if (shouldUpdate) {
+        if (shouldUpdate && data) {
             setData({
-                ...(data as any),
+                ...data,
                 ...updates,
             });
         }
