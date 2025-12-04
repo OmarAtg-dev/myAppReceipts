@@ -169,7 +169,7 @@ function Receipt() {
                             <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg">
                                 <div className="text-center">
                                     <FileText className="h-16 w-16 text-blue-500 mx-auto" />
-                                    <p className="mt-4 text-sm text-gray-500">PDF Preview</p>
+                                    <p className="mt-4 text-sm text-gray-500">Receipt File</p>
 
                                     {downloadUrl && (
                                         <a
@@ -178,7 +178,7 @@ function Receipt() {
                                             rel="noopener noreferrer"
                                             className="mt-4 px-4 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 inline-block"
                                         >
-                                            View PDF
+                                             View File
                                         </a>
                                     )}
                                 </div>

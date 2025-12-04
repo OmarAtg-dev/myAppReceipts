@@ -1,41 +1,47 @@
 import { createAgent, createTool, openai, anthropic } from "@inngest/agent-kit";
+import { PDFDocument } from "pdf-lib";
+import { Buffer } from "node:buffer";
 import { z } from "zod";
 
+type DocumentSource =
+    | { type: "url"; url: string }
+    | { type: "base64"; media_type: "application/pdf"; data: string };
 
-const parsePdfTool = createTool({
-    name: "parse-pdf",
-    description: "Analyzes the given PDF",
+
+const analyzeReceiptTool = createTool({
+    name: "analyze-receipt-file",
+    description: "Analyzes the given receipt file (PDF or image)",
     parameters: z.object({
-        pdfUrl: z.string(),
+        fileUrl: z.string(),
+        mimeType: z.string().optional(),
     }),
-    handler: async ({ pdfUrl }, { step }) => {
+   handler: async ({ fileUrl, mimeType }, { step }) => {
 
         try {
 
         
-        return await step?.ai.infer("parse-pdf", {
-            model: anthropic({
-                // model: "claude-3-5-sonnet-latest",
-                model: "claude-3-5-haiku-latest",
-                defaultParameters: {
-                    max_tokens: 3094,
-                },
-            }) as any,
-            body: {
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            {
-                                type: "document",
-                                source: {
-                                    type: "url",
-                                    url: pdfUrl,
+            const documentSource = await buildDocumentSource(fileUrl, mimeType);
+
+            return await step?.ai.infer("parse-pdf", {
+                model: anthropic({
+                    // model: "claude-3-5-sonnet-latest",
+                    model: "claude-3-5-haiku-latest",
+                    defaultParameters: {
+                        max_tokens: 3094,
+                    },
+                }) as any,
+                body: {
+                    messages: [
+                        {
+                            role: "user",
+                            content: [
+                                {
+                                    type: "document",
+                                    source: documentSource,
                                 },
-                            },
-                            {
-                                type: "text",
-                                text: `Extract the data from the receipt and return the structured output as follows:
+                                {
+                                    type: "text",
+                                    text: `Extract the data from the receipt and return the structured output as follows:
                                 {
                                     "merchant": {
                                         "name": "Store Name",
@@ -63,19 +69,96 @@ const parsePdfTool = createTool({
                                     },
                                     }
                                     `,
-                            }
-                        ]
-                    }
-                ]
-            }
-        })
-    }  catch (error){
+                                },
+                            ],
+                        },
+                    ],
+                },
+            });
+        } catch (error) {
             console.error(error);
             throw error;
 
         }
     },
 });
+async function buildDocumentSource(
+    fileUrl: string,
+    mimeType?: string,
+): Promise<DocumentSource> {
+    if (isPdfLike(mimeType, fileUrl)) {
+        return { type: "url", url: fileUrl };
+    }
+
+    const { bytes, detectedType } = await downloadFileBytes(fileUrl);
+    if (isPdfBuffer(bytes)) {
+        return {
+            type: "base64",
+            media_type: "application/pdf",
+            data: Buffer.from(bytes).toString("base64"),
+        };
+    }
+
+    const pdfBytes = await convertImageBytesToPdf(bytes, mimeType ?? detectedType);
+    return {
+        type: "base64",
+        media_type: "application/pdf",
+        data: Buffer.from(pdfBytes).toString("base64"),
+    };
+}
+
+function isPdfLike(mimeType?: string, fileUrl?: string) {
+    const lowered = mimeType?.toLowerCase();
+    return (
+        (lowered && lowered.includes("pdf")) ||
+        (fileUrl && fileUrl.toLowerCase().endsWith(".pdf"))
+    );
+}
+
+async function downloadFileBytes(fileUrl: string) {
+    const response = await fetch(fileUrl);
+    if (!response.ok) {
+        throw new Error(
+            `Failed to fetch file for analysis: ${response.status} ${response.statusText}`,
+        );
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const detectedType = response.headers.get("content-type") ?? undefined;
+    return { bytes: new Uint8Array(arrayBuffer), detectedType };
+}
+
+function isPdfBuffer(bytes: Uint8Array) {
+    if (bytes.length < 4) return false;
+    const header = Buffer.from(bytes.subarray(0, 4)).toString();
+    return header === "%PDF";
+}
+
+async function convertImageBytesToPdf(bytes: Uint8Array, mimeType?: string) {
+    const pdfDoc = await PDFDocument.create();
+    const usePngPipeline = isPng(bytes, mimeType);
+    const image = usePngPipeline
+        ? await pdfDoc.embedPng(bytes)
+        : await pdfDoc.embedJpg(bytes);
+    const page = pdfDoc.addPage([image.width, image.height]);
+    page.drawImage(image, {
+        x: 0,
+        y: 0,
+        width: image.width,
+        height: image.height,
+    });
+    return pdfDoc.save();
+}
+
+function isPng(bytes: Uint8Array, mimeType?: string) {
+    if (mimeType?.toLowerCase().includes("png")) {
+        return true;
+    }
+    if (bytes.length < 8) return false;
+    const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return pngSignature.every((value, index) => bytes[index] === value);
+}
+
 export const receiptScanningAgent = createAgent({
     name: "receipt_scanning_agent",
     description: "Processes receipt images and PDFs to extract key information such as vendor names, dates, amounts, and line items",
@@ -98,5 +181,5 @@ export const receiptScanningAgent = createAgent({
             max_completion_tokens: 3094,
         },
     }),
-    tools: [parsePdfTool],
+    tools: [analyzeReceiptTool],
 });

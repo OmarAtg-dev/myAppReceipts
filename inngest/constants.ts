@@ -1,5 +1,5 @@
 enum Events { 
-    EXTRACT_DATA_FROM_PDF_AND_SAVE_TO_DATABASE = "extract-data-from-pdf-and-save-to-database", 
+    PROCESS_RECEIPT_FILE_AND_SAVE_TO_DATABASE = "process-receipt-file-and-save-to-database", 
 }
 
 export default Events;

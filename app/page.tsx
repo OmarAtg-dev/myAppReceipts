@@ -1,4 +1,4 @@
-import PDFDropzone from "@/components/PDFDropzone";
+import ReceiptDropzone from "@/components/ReceiptDropzone";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, BarChart, Check, Search, Shield, Upload } from "lucide-react";
 import Link from "next/link";
@@ -30,11 +30,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* PDF Dropzone */}
+         {/* Receipt Dropzone */}
         <div className="mt-12 flex justify-center">
           <div className="relative w-full max-w-3xl rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden dark:border-gray-800 dark:bg-gray-950">
             <div className="p-6 md:p-8 relative">
-             <PDFDropzone />
+            <ReceiptDropzone />
             </div>
           </div>
         </div>
@@ -60,7 +60,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-xl font-bold">Easy Uploads</h3>
                 <p className="text-gray-500 dark:text-gray-400 text-center">
-                  Drag and drop your PDF receipts for instant scaning ad processing.
+                Drag and drop your receipt files (PDF, JPG, PNG) for instant scanning and processing.
                 </p>
 
               </div>
