@@ -3,20 +3,21 @@ import { PDFDocument } from "pdf-lib";
 import { Buffer } from "node:buffer";
 import { z } from "zod";
 
-type DocumentSource =
-    | { type: "url"; url: string }
-    | { type: "base64"; media_type: "application/pdf"; data: string };
+type DocumentSource = {
+    type: "base64";
+    media_type: "application/pdf";
+    data: string;
+};
 
 const analyzeReceiptTool = createTool({
     name: "analyze-receipt-file",
     description: "Analyzes the given receipt file (PDF or image)",
     parameters: z.object({
         fileUrl: z.string(),
-        mimeType: z.string().optional(),
     }),
-    handler: async ({ fileUrl, mimeType }, { step }) => {
+    handler: async ({ fileUrl }, { step }) => {
         try {
-            const documentSource = await buildDocumentSource(fileUrl, mimeType);
+            const documentSource = await buildDocumentSource(fileUrl);
 
             return await step?.ai.infer("parse-pdf", {
                 model: anthropic({
@@ -78,37 +79,14 @@ const analyzeReceiptTool = createTool({
     },
 });
 
-async function buildDocumentSource(
-    fileUrl: string,
-    mimeType?: string,
-): Promise<DocumentSource> {
-    if (isPdfLike(mimeType, fileUrl)) {
-        return { type: "url", url: fileUrl };
-    }
-
+async function buildDocumentSource(fileUrl: string): Promise<DocumentSource> {
     const { bytes, detectedType } = await downloadFileBytes(fileUrl);
-    if (isPdfBuffer(bytes)) {
-        return {
-            type: "base64",
-            media_type: "application/pdf",
-            data: Buffer.from(bytes).toString("base64"),
-        };
+    if (isPdfBuffer(bytes) || looksPdfLike(detectedType, fileUrl)) {
+        return toPdfDocument(bytes);
     }
 
-    const pdfBytes = await convertImageBytesToPdf(bytes, mimeType ?? detectedType);
-    return {
-        type: "base64",
-        media_type: "application/pdf",
-        data: Buffer.from(pdfBytes).toString("base64"),
-    };
-}
-
-function isPdfLike(mimeType?: string, fileUrl?: string) {
-    const lowered = mimeType?.toLowerCase();
-    return (
-        (lowered && lowered.includes("pdf")) ||
-        (fileUrl && fileUrl.toLowerCase().endsWith(".pdf"))
-    );
+    const pdfBytes = await convertImageBytesToPdf(bytes, detectedType);
+    return toPdfDocument(pdfBytes);
 }
 
 async function downloadFileBytes(fileUrl: string) {
@@ -128,6 +106,22 @@ function isPdfBuffer(bytes: Uint8Array) {
     if (bytes.length < 4) return false;
     const header = Buffer.from(bytes.subarray(0, 4)).toString();
     return header === "%PDF";
+}
+
+function looksPdfLike(detectedType?: string, fileUrl?: string) {
+    const lowered = detectedType?.toLowerCase();
+    return (
+        (lowered && lowered.includes("pdf")) ||
+        (fileUrl && fileUrl.toLowerCase().includes(".pdf"))
+    );
+}
+
+function toPdfDocument(bytes: Uint8Array): DocumentSource {
+    return {
+        type: "base64",
+        media_type: "application/pdf",
+        data: Buffer.from(bytes).toString("base64"),
+    };
 }
 
 async function convertImageBytesToPdf(bytes: Uint8Array, mimeType?: string) {
