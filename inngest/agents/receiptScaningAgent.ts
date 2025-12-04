@@ -38,34 +38,33 @@ const analyzeReceiptTool = createTool({
                                 },
                                 {
                                     type: "text",
-                                    text: `Extract the data from the receipt and return the structured output as follows:
-                                {
-                                    "merchant": {
-                                        "name": "Store Name",
-                                        "address": "123 Main St, City, Country",
-                                        "contact": "+123456789"
-                                    },
-                                    "transaction": {
-                                        "date": "YYYY-MM-DD",
-                                        "receipt_number": "ABC123456",
-                                        "payment_method": "Credit Card"
-                                    },
-                                    "items": [
-                                        {
-                                        "name": "Item 1",
-                                        "quantity": 2,
-                                        "unit_price": 10.0,
-                                        "total_price": 20.0
-                                        }
-                                    ],
-                                    "totals": {
-                                        "subtotal": 20.0,
-                                        "tax": 2.0,
-                                        "total": 22.0,
-                                        "currency": "USD"
-                                    },
-                                    }
-                                    `,
+                                    text: `You must return ONLY the following JSON object (no prose, no markdown). Use empty strings when data is missing. For numeric weights, output a number when known otherwise use null. Do not include any additional keys.
+{
+  "entreprise": "",
+  "description": "",
+  "telephone": "",
+  "email": "",
+  "numero_pesee": "",
+  "date_entree": "",
+  "heure_entree": "",
+  "date_sortie": "",
+  "heure_sortie": "",
+  "matricule": "",
+  "client": "",
+  "transporteur": "",
+  "destination": "",
+  "bon_livraison": "",
+  "produit": "",
+  "poids_entree_kg": null,
+  "poids_sortie_kg": null,
+  "poids_net_kg": null,
+  "installateur": {
+    "nom": "",
+    "telephone": "",
+    "email": ""
+  }
+}
+`,
                                 },
                             ],
                         },
@@ -150,18 +149,12 @@ function isPng(bytes: Uint8Array, mimeType?: string) {
 }
 export const receiptScanningAgent = createAgent({
     name: "receipt_scanning_agent",
-    description: "Processes receipt images and PDFs to extract key information such as vendor names, dates, amounts, and line items",
-    system: `You are an AI-powered receipt scanning assistant. Your primary role is to accurately extract and structure relevant information from scanned receipts. Your task includes recognizing and parsing details such as:
-        - Merchant Information: Store name, address, contact details
-        - Transaction Details: Date, time, receipt number, payment method
-        - Itemized Purchases: Product names, quantities, individual prices, discounts
-        - Total Amounts: Subtotal, taxes, total paid, and any applied discounts
-        - Ensure high accuracy by detecting OCR errors and correcting misread text when possible.
-        - Normalize dates, currency values, and formatting for consistency.
-        - If any key details are missing or unclear, return a structured response indicating incomplete data.
-        - Handle multiple formats, languages, and varying receipt layouts efficiently.
-        - Maintain a structured JSON output for easy integration with databases or expense tracking systems.
-        `,
+    description: "Processes receipt PDFs/images, extracts weigh ticket fields, and collaborates with the database agent to persist them.",
+    system: `You are an AI-powered weigh-ticket extraction assistant.
+- Always call the "analyze-receipt-file" tool first to obtain structured JSON in the required format.
+- Do not invent fields; use empty strings when values are missing.
+- After you have the JSON payload, call the database agent's save_to_database tool with the receiptId, a readable fileDisplayName, and the JSON (parsedData).
+- Never return prose—only reason internally and use tools to share results.`,
     model: openai({
         model: "gpt-4o-mini",
         // apiKey: process.env.OPENAI_API_KEY,

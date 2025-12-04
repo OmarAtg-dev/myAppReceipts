@@ -6,7 +6,8 @@ import { useQuery } from "convex/react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useRouter } from "next/navigation";
 import { Doc } from "@/convex/_generated/dataModel";
-import { FileTerminalIcon, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
+import { StructuredReceiptData } from "@/types/structuredReceipt";
 
 
 function ReceipList() {
@@ -51,13 +52,19 @@ function ReceipList() {
         <TableHead>Name</TableHead>
         <TableHead>Uploaded</TableHead>
         <TableHead>Size</TableHead>
-        <TableHead>Total</TableHead>
+        <TableHead>Poids net (kg)</TableHead>
         <TableHead>Status</TableHead>
         <TableHead className="w-[40px]"></TableHead>
         </TableRow>
         </TableHeader>  
         <TableBody>
-            {receipts.map((receipt: Doc<"receipts">) => ( 
+            {receipts.map((receipt: Doc<"receipts">) => {
+                const parsedData = receipt.parsedData as StructuredReceiptData | undefined;
+                const netWeight = typeof parsedData?.poids_net_kg === "number"
+                    ? parsedData.poids_net_kg.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                    : "-";
+
+                return (
                 <TableRow
                     key={receipt._id}
                     className="cursor-pointer hover:bg-gray-50"
@@ -69,16 +76,13 @@ function ReceipList() {
                         <FileText className="h-6 w-6 text-red-500" />
                     </TableCell>
                     <TableCell className="font-medium">
-                        {receipt.fileDisplayName || receipt.fileName}
+                        {receipt.fileDisplayName || parsedData?.entreprise || receipt.fileName}
                     </TableCell>
                     <TableCell>
                       {new Date(receipt.uploadedAt).toLocaleString()}
                     </TableCell>
                     <TableCell>{formatFileSize(receipt.size)}</TableCell>
-                    <TableCell>{receipt.transactionAmount
-                    ? `${receipt.transactionAmount} ${receipt.currency || ""}` 
-                    :  "-"} 
-                    </TableCell>
+                    <TableCell>{netWeight}</TableCell>
                     <TableCell> 
                         <span className={`px-2 py-1 rounded-full text-xs ${
                             receipt.status === "pending"
@@ -92,7 +96,8 @@ function ReceipList() {
                         </span>
                     </TableCell>
                 </TableRow>
-            ))}
+                );
+            })}
         </TableBody>
         </Table>
     </div>

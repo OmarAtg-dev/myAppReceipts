@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { structuredReceiptDataSchema } from "./receiptData";
 
 //Function to generate a Comvex upload URL for the client
 export const generateUploadURL = mutation({
@@ -31,13 +32,8 @@ export const storeReceipt = mutation({
             size: args.size,
             mimeType: args.mimeType,
             status: "pending",
-            // Initialize extracted data fields as null
-            merchantName: undefined,
-            merchantAddress: undefined,
-            merchantContact: undefined,
-            transactionDate: undefined,
-            transactionAmount: undefined,
-            currency: undefined, items: [],
+            receiptSummary: undefined,
+            parsedData: undefined,
         });
         return receiptId;
     },
@@ -167,21 +163,9 @@ export const deleteReceipt = mutation({
 export const updateReceiptWithExtractedData = mutation({
     args: {
         id: v.id("receipts"),
-        fileDisplayName: v.string(), merchantName: v.string(),
-        merchantAddress: v.string(),
-        merchantContact: v.string(),
-        transactionDate: v.string(),
-        transactionAmount: v.string(),
-        currency: v.string(),
         receiptSummary: v.string(),
-        items: v.array(
-            v.object({
-                name: v.string(),
-                quantity: v.number(),
-                unitPrice: v.number(),
-                totalPrice: v.number(),
-            }),
-        ),
+        fileDisplayName: v.string(),
+        parsedData: structuredReceiptDataSchema,
     },
 
 
@@ -194,12 +178,9 @@ export const updateReceiptWithExtractedData = mutation({
         }
         // Update the receipt with the extracted data 
         await ctx.db.patch(args.id, {
-            fileDisplayName: args.fileDisplayName, merchantName: args.merchantName, merchantAddress: args.merchantAddress,
-            merchantContact: args.merchantContact,
-            transactionDate: args.transactionDate, transactionAmount: args.transactionAmount,
-            currency: args.currency,
+            fileDisplayName: args.fileDisplayName,
+            parsedData: args.parsedData,
             receiptSummary: args.receiptSummary,
-            items: args.items,
             status: "processed", // Mark as processed now that we have extracted data
         });
         return {

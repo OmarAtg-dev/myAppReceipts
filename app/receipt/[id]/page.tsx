@@ -2,6 +2,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { StructuredReceiptData } from "@/types/structuredReceipt";
 import { useSchematicFlag } from "@schematichq/schematic-react";
 import { useQuery } from "convex/react";
 import { ChevronLeft, FileText, Lightbulb, Lock, Sparkles } from "lucide-react";
@@ -20,6 +21,8 @@ function Receipt() {
         api.receipts.getReceiptById,
         receiptId ? { id: receiptId } : "skip"
     );
+
+    const parsedData = (receipt?.parsedData as StructuredReceiptData) || undefined;
 
     const fileId = receipt?.fileId;
 
@@ -75,12 +78,8 @@ function Receipt() {
     const uploadDate = new Date(receipt.uploadedAt).toLocaleString();
 
     // Check if extracted data exists
-    const hasExtractedData = !!(
-        receipt.merchantName ||
-        receipt.merchantAddress ||
-        receipt.transactionDate ||
-        receipt.transactionAmount
-    );
+    const hasExtractedData = !!parsedData;
+    const summaryText = parsedData?.description || receipt.receiptSummary;
 
     return (
         <div className="container mx-auto py-10 px-4">
@@ -186,78 +185,73 @@ function Receipt() {
                         </div>
 
                         {/* Extracted Data Section */}
-                        {hasExtractedData && (
+                        {hasExtractedData && parsedData && (
                             <div className="mt-8">
                                 <h3 className="text-lg font-semibold mb-4">Receipt Details</h3>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Merchant Information */}
                                     <div className="bg-gray-50 p-4 rounded-lg">
                                         <h4 className="font-medium text-gray-700 mb-3">
-                                            Merchant Information
+                                            Entreprise
                                         </h4>
-
                                         <div className="space-y-2">
-                                            {receipt.merchantName && (
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Name</p>
-                                                    <p className="font-medium">
-                                                        {receipt.merchantName}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {receipt.merchantAddress && (
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Address</p>
-                                                    <p className="font-medium">
-                                                        {receipt.merchantAddress}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {receipt.merchantContact && (
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Contact</p>
-                                                    <p className="font-medium">
-                                                        {receipt.merchantContact}
-                                                    </p>
-                                                </div>
-                                            )}
+                                            <DetailRow label="Entreprise" value={formatDisplayValue(parsedData.entreprise)} />
+                                            <DetailRow label="Description" value={formatDisplayValue(parsedData.description)} />
+                                            <DetailRow label="Téléphone" value={formatDisplayValue(parsedData.telephone)} />
+                                            <DetailRow label="Email" value={formatDisplayValue(parsedData.email)} />
                                         </div>
                                     </div>
 
-                                    {/* Transaction Details */}
                                     <div className="bg-gray-50 p-4 rounded-lg">
                                         <h4 className="font-medium text-gray-700 mb-3">
-                                            Transaction Details
+                                            Numéro & Dates
                                         </h4>
-
                                         <div className="space-y-2">
-                                            {receipt.transactionDate && (
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Date</p>
-                                                    <p className="font-medium">
-                                                        {receipt.transactionDate}
-                                                    </p>
-                                                </div>
-                                            )}
+                                            <DetailRow label="Numéro de pesée" value={formatDisplayValue(parsedData.numero_pesee)} />
+                                            <DetailRow label="Date d'entrée" value={`${formatDisplayValue(parsedData.date_entree)} ${formatDisplayValue(parsedData.heure_entree)}`} />
+                                            <DetailRow label="Date de sortie" value={`${formatDisplayValue(parsedData.date_sortie)} ${formatDisplayValue(parsedData.heure_sortie)}`} />
+                                        </div>
+                                    </div>
 
-                                            {receipt.transactionAmount && (
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Amount</p>
-                                                    <p className="font-medium">
-                                                        {receipt.transactionAmount}{" "}
-                                                        {receipt.currency || ""}
-                                                    </p>
-                                                </div>
-                                            )}
+                                    <div className="bg-gray-50 p-4 rounded-lg">
+                                        <h4 className="font-medium text-gray-700 mb-3">
+                                            Logistique
+                                        </h4>
+                                        <div className="space-y-2">
+                                            <DetailRow label="Matricule" value={formatDisplayValue(parsedData.matricule)} />
+                                            <DetailRow label="Client" value={formatDisplayValue(parsedData.client)} />
+                                            <DetailRow label="Transporteur" value={formatDisplayValue(parsedData.transporteur)} />
+                                            <DetailRow label="Destination" value={formatDisplayValue(parsedData.destination)} />
+                                            <DetailRow label="Bon de livraison" value={formatDisplayValue(parsedData.bon_livraison)} />
+                                            <DetailRow label="Produit" value={formatDisplayValue(parsedData.produit)} />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-gray-50 p-4 rounded-lg">
+                                        <h4 className="font-medium text-gray-700 mb-3">
+                                            Poids (kg)
+                                        </h4>
+                                        <div className="space-y-2">
+                                            <DetailRow label="Poids entrée" value={formatWeightValue(parsedData.poids_entree_kg)} />
+                                            <DetailRow label="Poids sortie" value={formatWeightValue(parsedData.poids_sortie_kg)} />
+                                            <DetailRow label="Poids net" value={formatWeightValue(parsedData.poids_net_kg)} />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-gray-50 p-4 rounded-lg">
+                                        <h4 className="font-medium text-gray-700 mb-3">
+                                            Installateur
+                                        </h4>
+                                        <div className="space-y-2">
+                                            <DetailRow label="Nom" value={formatDisplayValue(parsedData.installateur.nom)} />
+                                            <DetailRow label="Téléphone" value={formatDisplayValue(parsedData.installateur.telephone)} />
+                                            <DetailRow label="Email" value={formatDisplayValue(parsedData.installateur.email)} />
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* SUMMARY SECTION */}
-                                {receipt.receiptSummary && (
+                                {summaryText && (
                                     <>
                                         {isSummariesEnabled ? (
                                             <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-100 shadow-sm">
@@ -273,7 +267,7 @@ function Receipt() {
 
                                                 <div className="bg-white bg-opacity-60 rounded-lg p-4 border border-blue-100">
                                                     <p className="text-sm whitespace-pre-line leading-relaxed text-gray-700">
-                                                        {receipt.receiptSummary}
+                                                        {summaryText}
                                                     </p>
                                                 </div>
 
@@ -344,6 +338,19 @@ function formatFileSize(bytes: number): string {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-function formatCurrency(amount: number, currency: string = ""): string {
-    return `${amount.toFixed(2)}${currency ? ` ${currency}` : ""}`;
+function formatDisplayValue(value?: string | null) {
+    return value && value.trim().length > 0 ? value : "—";
+}
+
+function formatWeightValue(value?: number | null | undefined) {
+    return typeof value === "number" ? `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg` : "—";
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+    return (
+        <div>
+            <p className="text-sm text-gray-500">{label}</p>
+            <p className="font-medium">{value}</p>
+        </div>
+    );
 }
