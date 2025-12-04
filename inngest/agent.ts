@@ -50,8 +50,16 @@ export const processReceiptFile = inngest.createFunction(
     { id: "Process Receipt File and Save in Database" },
     { event: Events.PROCESS_RECEIPT_FILE_AND_SAVE_TO_DATABASE },
     async ({ event }) => {
+      const { url, receiptId, mimeType } = event.data as {
+        url: string;
+        receiptId: string;
+        mimeType?: string;
+      };
+
       const result = await agentNetwork.run(
-        `Extract the key data from this receipt file (PDF or image): ${event.data.url}. Once the data is extracted, save it to the database using the receiptId: ${event.data.receiptId}.`,
+        `Extract the key data from this receipt file (MIME type: ${mimeType ?? "unknown"}): ${url}.
+Use the "analyze-receipt-file" tool with both the fileUrl and mimeType so you can read the binary contents, 
+then save the structured data to the database using the receiptId: ${receiptId}.`,
       );
   
       return result.state.data["receipt"];

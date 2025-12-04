@@ -77,12 +77,13 @@ export async function uploadReceipt(formData: FormData) {
         }
 
         const { storageId } = await uploadResponse.json();
+        const mimeType = resolveContentType(file);
         const receiptId = await convex.mutation(api.receipts.storeReceipt, {
             userId: user.id,
             fileId: storageId,
             fileName: file.name,
             size: file.size,
-            mimeType: resolveContentType(file),
+            mimeType,
         });
 
         const fileUrl = await getFileDownloadUrl(storageId);
@@ -92,6 +93,7 @@ export async function uploadReceipt(formData: FormData) {
             data: {
                 url: fileUrl.downloadUrl,
                 receiptId,
+                mimeType,
             },
         });
 
