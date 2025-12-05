@@ -1,7 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import convex from "@/lib/convexClient";
-import { client } from "@/lib/schematic";
+import { getConvexClient } from "@/lib/convexClient";
+import { getSchematicClient } from "@/lib/schematic";
 import { createAgent, createTool, openai } from "@inngest/agent-kit";
 import { z } from "zod";
 
@@ -54,7 +54,8 @@ const saveToDatabaseTool = createTool({
         const result = await context.step?.run(
             "save-receipt-to-database",
             async () => {
-
+                const convex = getConvexClient();
+                const schematic = getSchematicClient();
                 try {
 
                     //Call the convex mutation to update the receipt with extracted data
@@ -68,7 +69,7 @@ const saveToDatabaseTool = createTool({
                         }
                     );
                     //Track event in schematic
-                    await client.track({
+                    await schematic.track({
                         event: "scan",
                         company: {
                             id: userId,

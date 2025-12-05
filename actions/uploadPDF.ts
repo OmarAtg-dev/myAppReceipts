@@ -1,6 +1,6 @@
 'use server'
 import { api } from "@/convex/_generated/api";
-import convex from "@/lib/convexClient";
+import { getConvexClient } from "@/lib/convexClient";
 import { currentUser } from "@clerk/nextjs/server";
 import { getFileDownloadUrl } from "./getFileDownloadUrl";
 import { inngest } from "@/inngest/client";
@@ -17,6 +17,7 @@ export async function uploadPDF(formData: FormData) {
         return { success: false, error: "Not authenticated" };
 
     }
+    const convex = getConvexClient();
     try {
         //Get the file from the form data
         const file = formData.get("file") as File;
@@ -66,7 +67,7 @@ export async function uploadPDF(formData: FormData) {
         //TODO : trigger inngest agent flow...  this is the start  (input)
         console.log(' fileUrl.downloadUrl >> '+ fileUrl.downloadUrl, ' ..... ' , receiptId)
         await inngest.send({
-            name: Events.EXTRACT_DATA_FROM_PDF_AND_SAVE_TO_DATABASE,
+            name: Events.PROCESS_RECEIPT_FILE_AND_SAVE_TO_DATABASE,
             data: {
                 url: fileUrl.downloadUrl,
                 receiptId,

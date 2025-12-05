@@ -1,6 +1,19 @@
 import { ConvexHttpClient } from "convex/browser";
 
-//Create a convex HTTP client for server-seide actions 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+let cachedClient: ConvexHttpClient | null = null;
 
-export default convex;
+export function getConvexClient(): ConvexHttpClient {
+    if (cachedClient) {
+        return cachedClient;
+    }
+    const apiUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!apiUrl) {
+        throw new Error(
+            "NEXT_PUBLIC_CONVEX_URL is not set. Add it to your environment to enable Convex mutations.",
+        );
+    }
+    cachedClient = new ConvexHttpClient(apiUrl);
+    return cachedClient;
+}
+
+export default getConvexClient;

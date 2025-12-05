@@ -9,6 +9,7 @@ import {
 } from "@dnd-kit/core";
 import { useSchematicEntitlement } from "@schematichq/schematic-react";
 import { AlertCircle, CheckCircle, CloudUpload } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
@@ -375,10 +376,13 @@ function ReceiptDropzone() {
                                     key={photo.url}
                                     className="relative h-20 w-20 overflow-hidden rounded border border-gray-200"
                                 >
-                                    <img
+                                    <Image
                                         src={photo.url}
                                         alt={`Captured receipt ${index + 1}`}
                                         className="h-full w-full object-cover"
+                                        width={80}
+                                        height={80}
+                                        unoptimized
                                     />
                                     <button
                                         type="button"

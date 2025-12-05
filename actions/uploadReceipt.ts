@@ -1,6 +1,6 @@
 "use server"
 import { api } from "@/convex/_generated/api";
-import convex from "@/lib/convexClient";
+import { getConvexClient } from "@/lib/convexClient";
 import { currentUser } from "@clerk/nextjs/server";
 import { getFileDownloadUrl } from "./getFileDownloadUrl";
 import { inngest } from "@/inngest/client";
@@ -48,6 +48,7 @@ export async function uploadReceipt(formData: FormData) {
     if (!user) {
         return { success: false, error: "Not authenticated" };
     }
+    const convex = getConvexClient();
 
     try {
         const file = formData.get("file") as File;

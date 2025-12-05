@@ -2,6 +2,10 @@
 
 import type { Doc } from "@/convex/_generated/dataModel";
 
+type XLSXModule = typeof import("xlsx-js-style");
+type Worksheet = import("xlsx-js-style").WorkSheet;
+type CellObject = import("xlsx-js-style").CellObject;
+
 type ParsedInstallateur = {
     email?: string | null;
     nom?: string | null;
@@ -183,27 +187,35 @@ const deriveRowValues = (receipt: ReceiptDoc): Record<string, string | number> =
 
  
 
+const getMerges = (ws: Worksheet) => {
+    if (!ws["!merges"]) {
+        ws["!merges"] = [];
+    }
+    return ws["!merges"];
+};
+
 const applyStyle = (
-    ws: any,
-    XLSX: any,
+    ws: Worksheet,
+    XLSX: XLSXModule,
     rowIndex: number,
     columnIndex: number,
     style: Record<string, unknown>,
     numberFormatOverride?: string,
-) => {
+): void => {
     const cellAddress = XLSX.utils.encode_cell({ r: rowIndex - 1, c: columnIndex - 1 });
     if (!ws[cellAddress]) {
         ws[cellAddress] = { t: "s", v: "" };
     }
-    ws[cellAddress].s = { ...(ws[cellAddress].s ?? {}), ...style };
+    const cell = ws[cellAddress] as CellObject & { s?: Record<string, unknown>; z?: string };
+    cell.s = { ...(cell.s ?? {}), ...style };
     if (numberFormatOverride) {
-        ws[cellAddress].z = numberFormatOverride;
+        cell.z = numberFormatOverride;
     }
 };
 
 const styleRange = (
-    ws: any,
-    XLSX: any,
+    ws: Worksheet,
+    XLSX: XLSXModule,
     startRow: number,
     endRow: number,
     startCol: number,
@@ -231,14 +243,14 @@ const sumRows = (rows: Array<Record<string, string | number>>, key: string) =>
         return `${value}`.trim().length > 0;
     };
     
-    const selectDynamicFieldsForReceipts = (receipts: ReceiptDoc[]): DynamicFieldConfig[] =>
+const selectDynamicFieldsForReceipts = (receipts: ReceiptDoc[]): DynamicFieldConfig[] =>
         DYNAMIC_FIELD_CONFIG.filter((field) => receipts.some((receipt) => hasDisplayableValue(field.value(receipt))));
     
     const buildSummarySheet = (
-        XLSX: any,
+        XLSX: XLSXModule,
         receipts: ReceiptDoc[],
         title: string,
-    ): { ws: any; dataRowCount: number; allColumns: ColumnConfig[] } => {
+    ): { ws: Worksheet; dataRowCount: number; allColumns: ColumnConfig[] } => {
         const dynamicFields = selectDynamicFieldsForReceipts(receipts);
     const allColumns: ColumnConfig[] = [
         ...BASE_COLUMNS,
@@ -271,8 +283,7 @@ const sumRows = (rows: Array<Record<string, string | number>>, key: string) =>
     XLSX.utils.sheet_add_aoa(ws, [[title]], { origin: "A1" });
 
 
-    ws["!merges"] = ws["!merges"] || [];
-    ws["!merges"].push({
+    getMerges(ws).push({
         s: { r: 0, c: 0 },
         e: { r: 0, c: Math.max(allColumns.length - 1, 0) },
     });
@@ -341,7 +352,7 @@ export async function generateReceiptWorkbookBuffer(receipt: ReceiptDoc): Promis
         XLSX.utils.sheet_add_aoa(ws, lineItemData, { origin: `A${lineItemsStartRow}` });
         XLSX.utils.sheet_add_aoa(ws, [lineItemTotal], { origin: `A${lineItemsStartRow + lineItemData.length}` });
 
-        ws["!merges"].push({
+        getMerges(ws).push({
             s: { r: lineItemsTitleRow - 1, c: 0 },
             e: { r: lineItemsTitleRow - 1, c: lineItemColumns.length - 1 },
         });

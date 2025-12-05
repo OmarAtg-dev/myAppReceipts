@@ -1,11 +1,13 @@
 
 "use server";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel"; import convex from "@/lib/convexClient";
+import { Id } from "@/convex/_generated/dataModel";
+import { getConvexClient } from "@/lib/convexClient";
 /**  
 * Server action to get a download URL for a file in Convex storage 
 */
 export async function getFileDownloadUrl(fileId: Id<"_storage"> | string) {
+    const convex = getConvexClient();
     try {
 
         // Get download URL from Convex
