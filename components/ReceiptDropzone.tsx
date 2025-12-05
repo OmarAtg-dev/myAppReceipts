@@ -38,6 +38,7 @@ function ReceiptDropzone() {
     const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
     const { user } = useUser();
     const {
@@ -138,6 +139,9 @@ function ReceiptDropzone() {
     const triggerFileInput = useCallback(() => {
         fileInputRef.current?.click();
     }, []);
+    const triggerCameraCapture = useCallback(() => {
+        cameraInputRef.current?.click();
+    }, []);
 
     const isUserSignedIn = !!user;
     const canUpload = isUserSignedIn && isFeatureEnabled;
@@ -179,14 +183,33 @@ function ReceiptDropzone() {
                                 onChange={handleFileInputChange}
                                 className="hidden"
                             />
+                            <input
+                                type="file"
+                                ref={cameraInputRef}
+                                accept="image/*"
+                                capture="environment"
+                                multiple
+                                onChange={handleFileInputChange}
+                                className="hidden"
+                            />
 
-                            <Button
-                                className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled={!isFeatureEnabled}
-                                onClick={triggerFileInput}
-                            >
-                                {isFeatureEnabled ? "Select files" : "Upgrade to upload"}
-                            </Button>
+                            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                                <Button
+                                    className="px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={!isFeatureEnabled}
+                                    onClick={triggerFileInput}
+                                >
+                                    {isFeatureEnabled ? "Select files" : "Upgrade to upload"}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    className="px-4 py-2 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={!isFeatureEnabled}
+                                    onClick={triggerCameraCapture}
+                                >
+                                    {isFeatureEnabled ? "Take Photo" : "Upgrade to upload"}
+                                </Button>
+                            </div>
                         </>
                     )}
                 </div>
