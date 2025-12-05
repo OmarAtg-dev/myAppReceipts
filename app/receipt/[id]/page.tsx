@@ -33,6 +33,53 @@ function Receipt() {
     const parsedData = (receipt?.parsedData as StructuredReceiptData) || undefined;
     const fileId = receipt?.fileId;
 
+    const handleFileDownload = useCallback(async () => {
+        if (!fileId) return;
+        setDownloadError(null);
+        setIsDownloadingFile(true);
+        try {
+            const result = await getFileDownloadUrl(fileId);
+            if (!result.success || !result.downloadUrl) {
+                throw new Error(result.error ?? "Unable to open the receipt file.");
+            }
+            window.open(result.downloadUrl, "_blank", "noopener,noreferrer");
+        } catch (error) {
+            console.error("Failed to download receipt file", error);
+            setDownloadError(
+                error instanceof Error ? error.message : "Unable to download the file. Please try again.",
+            );
+        } finally {
+            setIsDownloadingFile(false);
+        }
+    }, [fileId]);
+
+    const handleDeleteReceipt = useCallback(async () => {
+        if (!receipt?._id) return;
+        const confirmed = window.confirm(
+            "This will permanently delete the receipt and its file. Do you want to continue?",
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        setDeleteError(null);
+        setIsDeletingReceipt(true);
+        try {
+            const result = await deleteReceipt(receipt._id);
+            if (!result.success) {
+                throw new Error(result.error ?? "Failed to delete the receipt.");
+            }
+            router.push("/receipts");
+        } catch (error) {
+            console.error("Failed to delete receipt", error);
+            setDeleteError(
+                error instanceof Error ? error.message : "Unable to delete the receipt. Please try again.",
+            );
+        } finally {
+            setIsDeletingReceipt(false);
+        }
+    }, [receipt?._id, router]);
+
     // Convert URL param to Convex ID
     useEffect(() => {
         try {
@@ -81,52 +128,6 @@ function Receipt() {
     // Check if extracted data exists
     const hasExtractedData = !!parsedData;
     const summaryText = parsedData?.description || receipt.receiptSummary;
-    const handleFileDownload = useCallback(async () => {
-        if (!fileId) return;
-        setDownloadError(null);
-        setIsDownloadingFile(true);
-        try {
-            const result = await getFileDownloadUrl(fileId);
-            if (!result.success || !result.downloadUrl) {
-                throw new Error(result.error ?? "Unable to open the receipt file.");
-            }
-            window.open(result.downloadUrl, "_blank", "noopener,noreferrer");
-        } catch (error) {
-            console.error("Failed to download receipt file", error);
-            setDownloadError(
-                error instanceof Error ? error.message : "Unable to download the file. Please try again.",
-            );
-        } finally {
-            setIsDownloadingFile(false);
-        }
-    }, [fileId]);
-
-    const handleDeleteReceipt = useCallback(async () => {
-        if (!receipt?._id) return;
-        const confirmed = window.confirm(
-            "This will permanently delete the receipt and its file. Do you want to continue?",
-        );
-        if (!confirmed) {
-            return;
-        }
-
-        setDeleteError(null);
-        setIsDeletingReceipt(true);
-        try {
-            const result = await deleteReceipt(receipt._id);
-            if (!result.success) {
-                throw new Error(result.error ?? "Failed to delete the receipt.");
-            }
-            router.push("/receipts");
-        } catch (error) {
-            console.error("Failed to delete receipt", error);
-            setDeleteError(
-                error instanceof Error ? error.message : "Unable to delete the receipt. Please try again.",
-            );
-        } finally {
-            setIsDeletingReceipt(false);
-        }
-    }, [receipt?._id, router]);
 
     const handleExcelExport = async () => {
         if (!receipt) return;
