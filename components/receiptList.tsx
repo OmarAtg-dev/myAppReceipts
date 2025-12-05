@@ -1,5 +1,7 @@
 "use client";
 
+import { deleteReceipt } from "@/actions/deleteReceipt";
+import { getFileDownloadUrl } from "@/actions/getFileDownloadUrl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
@@ -7,7 +9,7 @@ import { useQuery } from "convex/react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useRouter } from "next/navigation";
 import { Doc, Id } from "@/convex/_generated/dataModel";
-import { FileText } from "lucide-react";
+import { Download, FileText, Trash2 } from "lucide-react";
 import { StructuredReceiptData } from "@/types/structuredReceipt";
 import { Button } from "./ui/button";
 import type { ReceiptDoc } from "@/lib/excelExport";
@@ -25,6 +27,9 @@ function ReceipList() {
     const [isExporting, setIsExporting] = useState(false);
     const [warningMessage, setWarningMessage] = useState<string | null>(null);
     const [exportError, setExportError] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [downloadingReceiptId, setDownloadingReceiptId] = useState<Id<"receipts"> | null>(null);
+    const [deletingReceiptId, setDeletingReceiptId] = useState<Id<"receipts"> | null>(null);
 
     const processedReceipts = useMemo(
         () => (receipts ?? []).filter((receipt) => receipt.status === "processed"),
@@ -112,6 +117,56 @@ function ReceipList() {
         }
     }, [receipts, selectedIds]);
 
+    const handleDownloadReceipt = useCallback(
+        async (receipt: Doc<"receipts">) => {
+            setActionError(null);
+            setDownloadingReceiptId(receipt._id);
+            try {
+                const result = await getFileDownloadUrl(receipt.fileId);
+                if (!result.success || !result.downloadUrl) {
+                    throw new Error(result.error ?? "Unable to download receipt.");
+                }
+                window.open(result.downloadUrl, "_blank", "noopener,noreferrer");
+            } catch (error) {
+                console.error("Failed to download receipt", error);
+                setActionError(
+                    error instanceof Error ? error.message : "Unable to download receipt. Please try again.",
+                );
+            } finally {
+                setDownloadingReceiptId(null);
+            }
+        },
+        [],
+    );
+
+    const handleDeleteReceipt = useCallback(
+        async (receipt: Doc<"receipts">) => {
+            const confirmed = window.confirm(
+                `Delete "${receipt.fileDisplayName || receipt.fileName}" and remove it from your history?`,
+            );
+            if (!confirmed) {
+                return;
+            }
+
+            setActionError(null);
+            setDeletingReceiptId(receipt._id);
+            try {
+                const result = await deleteReceipt(receipt._id);
+                if (!result.success) {
+                    throw new Error(result.error ?? "Unable to delete receipt.");
+                }
+            } catch (error) {
+                console.error("Failed to delete receipt", error);
+                setActionError(
+                    error instanceof Error ? error.message : "Unable to delete receipt. Please try again.",
+                );
+            } finally {
+                setDeletingReceiptId(null);
+            }
+        },
+        [],
+    );
+
     if (!user) {
         return (
             <div className="w-full p-8 text-center">
@@ -161,6 +216,7 @@ function ReceipList() {
                     )}
                 </div>
             </div>
+            {actionError && <p className="mb-4 text-sm text-red-600">{actionError}</p>}
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                 <Table>
                     <TableHeader>
@@ -174,6 +230,7 @@ function ReceipList() {
                             <TableHead>Size</TableHead>
                             <TableHead>Poids net (kg)</TableHead>
                             <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -230,6 +287,34 @@ function ReceipList() {
                                         >
                                             {receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1)}
                                         </span>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <div className="flex justify-end gap-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleDownloadReceipt(receipt);
+                                                }}
+                                                disabled={downloadingReceiptId === receipt._id}
+                                            >
+                                                <Download className="h-4 w-4" />
+                                                <span className="hidden sm:inline">Download</span>
+                                            </Button>
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleDeleteReceipt(receipt);
+                                                }}
+                                                disabled={deletingReceiptId === receipt._id}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                                <span className="hidden sm:inline">Delete</span>
+                                            </Button>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             );
