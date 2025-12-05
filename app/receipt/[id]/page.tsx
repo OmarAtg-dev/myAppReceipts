@@ -42,7 +42,13 @@ function Receipt() {
             if (!result.success || !result.downloadUrl) {
                 throw new Error(result.error ?? "Unable to open the receipt file.");
             }
-            window.open(result.downloadUrl, "_blank", "noopener,noreferrer");
+            const link = document.createElement("a");
+            link.href = result.downloadUrl;
+            link.download = receipt?.fileName ?? receipt?.fileDisplayName ?? "receipt";
+            link.rel = "noopener noreferrer";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         } catch (error) {
             console.error("Failed to download receipt file", error);
             setDownloadError(
@@ -51,7 +57,7 @@ function Receipt() {
         } finally {
             setIsDownloadingFile(false);
         }
-    }, [fileId]);
+    }, [fileId, receipt?.fileDisplayName, receipt?.fileName]);
 
     const handleDeleteReceipt = useCallback(async () => {
         if (!receipt?._id) return;

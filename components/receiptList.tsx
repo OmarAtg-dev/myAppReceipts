@@ -1,7 +1,6 @@
 "use client";
 
 import { deleteReceipt } from "@/actions/deleteReceipt";
-import { getFileDownloadUrl } from "@/actions/getFileDownloadUrl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
@@ -9,7 +8,7 @@ import { useQuery } from "convex/react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useRouter } from "next/navigation";
 import { Doc, Id } from "@/convex/_generated/dataModel";
-import { Download, FileText, Trash2 } from "lucide-react";
+import { FileText, Trash2 } from "lucide-react";
 import { StructuredReceiptData } from "@/types/structuredReceipt";
 import { Button } from "./ui/button";
 import type { ReceiptDoc } from "@/lib/excelExport";
@@ -25,11 +24,11 @@ function ReceipList() {
 
     const [selectedIds, setSelectedIds] = useState<Set<Id<"receipts">>>(new Set());
     const [isExporting, setIsExporting] = useState(false);
-    const [warningMessage, setWarningMessage] = useState<string | null>(null);
+    const [exportWarning, setExportWarning] = useState<string | null>(null);
+    const [deleteWarning, setDeleteWarning] = useState<string | null>(null);
     const [exportError, setExportError] = useState<string | null>(null);
-    const [actionError, setActionError] = useState<string | null>(null);
-    const [downloadingReceiptId, setDownloadingReceiptId] = useState<Id<"receipts"> | null>(null);
-    const [deletingReceiptId, setDeletingReceiptId] = useState<Id<"receipts"> | null>(null);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
     const processedReceipts = useMemo(
         () => (receipts ?? []).filter((receipt) => receipt.status === "processed"),
@@ -44,16 +43,13 @@ function ReceipList() {
     useEffect(() => {
         if (!receipts) return;
         setSelectedIds((prev) => {
-            let changed = false;
             const next = new Set<Id<"receipts">>();
             for (const receipt of receipts) {
-                if (receipt.status === "processed" && prev.has(receipt._id)) {
+                if (prev.has(receipt._id)) {
                     next.add(receipt._id);
-                } else if (prev.has(receipt._id)) {
-                    changed = true;
                 }
             }
-            if (!changed && next.size === prev.size) {
+            if (next.size === prev.size) {
                 return prev;
             }
             return next;
@@ -61,10 +57,16 @@ function ReceipList() {
     }, [receipts]);
 
     useEffect(() => {
-        if (selectedIds.size > 0 && warningMessage) {
-            setWarningMessage(null);
+        if (selectedProcessedCount > 0 && exportWarning) {
+            setExportWarning(null);
         }
-    }, [selectedIds, warningMessage]);
+    }, [selectedProcessedCount, exportWarning]);
+
+    useEffect(() => {
+        if (selectedIds.size > 0 && deleteWarning) {
+            setDeleteWarning(null);
+        }
+    }, [selectedIds, deleteWarning]);
 
     const toggleReceiptSelection = useCallback((id: Id<"receipts">) => {
         setSelectedIds((prev) => {
@@ -86,11 +88,11 @@ function ReceipList() {
         );
 
         if (eligible.length === 0) {
-            setWarningMessage("Select at least one processed receipt to export.");
+            setExportWarning("Select at least one processed receipt to export.");
             return;
         }
 
-        setWarningMessage(null);
+        setExportWarning(null);
         setExportError(null);
         setIsExporting(true);
 
@@ -117,55 +119,43 @@ function ReceipList() {
         }
     }, [receipts, selectedIds]);
 
-    const handleDownloadReceipt = useCallback(
-        async (receipt: Doc<"receipts">) => {
-            setActionError(null);
-            setDownloadingReceiptId(receipt._id);
-            try {
-                const result = await getFileDownloadUrl(receipt.fileId);
-                if (!result.success || !result.downloadUrl) {
-                    throw new Error(result.error ?? "Unable to download receipt.");
-                }
-                window.open(result.downloadUrl, "_blank", "noopener,noreferrer");
-            } catch (error) {
-                console.error("Failed to download receipt", error);
-                setActionError(
-                    error instanceof Error ? error.message : "Unable to download receipt. Please try again.",
-                );
-            } finally {
-                setDownloadingReceiptId(null);
-            }
-        },
-        [],
-    );
+    const handleDeleteSelected = useCallback(async () => {
+        if (selectedIds.size === 0) {
+            setDeleteWarning("Select at least one receipt to delete.");
+            return;
+        }
 
-    const handleDeleteReceipt = useCallback(
-        async (receipt: Doc<"receipts">) => {
-            const confirmed = window.confirm(
-                `Delete "${receipt.fileDisplayName || receipt.fileName}" and remove it from your history?`,
-            );
-            if (!confirmed) {
-                return;
-            }
+        const confirmed = window.confirm(
+            `Delete ${selectedIds.size} receipt${selectedIds.size > 1 ? "s" : ""}? This action cannot be undone.`,
+        );
+        if (!confirmed) {
+            return;
+        }
 
-            setActionError(null);
-            setDeletingReceiptId(receipt._id);
-            try {
-                const result = await deleteReceipt(receipt._id);
+        setDeleteWarning(null);
+        setDeleteError(null);
+        setIsDeletingSelected(true);
+
+        try {
+            const idsToDelete = Array.from(selectedIds);
+            for (const id of idsToDelete) {
+                const result = await deleteReceipt(id);
                 if (!result.success) {
                     throw new Error(result.error ?? "Unable to delete receipt.");
                 }
-            } catch (error) {
-                console.error("Failed to delete receipt", error);
-                setActionError(
-                    error instanceof Error ? error.message : "Unable to delete receipt. Please try again.",
-                );
-            } finally {
-                setDeletingReceiptId(null);
             }
-        },
-        [],
-    );
+            setSelectedIds(new Set());
+        } catch (error) {
+            console.error("Failed to delete selected receipts", error);
+            setDeleteError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to delete the selected receipts. Please try again.",
+            );
+        } finally {
+            setIsDeletingSelected(false);
+        }
+    }, [selectedIds]);
 
     if (!user) {
         return (
@@ -194,29 +184,53 @@ function ReceipList() {
 
     return (
         <div className="w-full">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <h2 className="text-xl font-semibold">Your Receipts</h2>
                     <p className="text-sm text-gray-500">
-                        Selected {selectedProcessedCount} of {processedReceipts.length} processed receipts
+                        Selected {selectedProcessedCount} of {processedReceipts.length} processed receipts for export
+                    </p>
+                    <p className="text-xs text-gray-500">
+                        Total selected: {selectedIds.size} receipt{selectedIds.size === 1 ? "" : "s"}
                     </p>
                 </div>
-                <div className="flex flex-col items-start gap-1 sm:items-end">
-                    <Button
-                        onClick={handleExport}
-                        disabled={isExporting || processedReceipts.length === 0}
-                        className="px-4"
-                    >
-                        {isExporting ? "Exporting…" : "Export to Excel"}
-                    </Button>
-                    {warningMessage && <p className="text-xs text-amber-600">{warningMessage}</p>}
+                <div className="flex flex-col items-start gap-2 sm:items-end">
+                    <p className="text-sm font-medium text-gray-600">Actions</p>
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            onClick={handleExport}
+                            disabled={isExporting || processedReceipts.length === 0}
+                            className="px-4"
+                        >
+                            {isExporting ? "Exporting…" : "Export to Excel"}
+                        </Button>
+                        <Button
+                            onClick={handleDeleteSelected}
+                            disabled={isDeletingSelected || selectedIds.size === 0}
+                            variant="destructive"
+                            className="px-4"
+                        >
+                            {isDeletingSelected ? (
+                                "Deleting…"
+                            ) : (
+                                <>
+                                    <Trash2 className="h-4 w-4" />
+                                    Delete
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                    {exportWarning && <p className="text-xs text-amber-600">{exportWarning}</p>}
+                    {deleteWarning && <p className="text-xs text-amber-600">{deleteWarning}</p>}
                     {exportError && <p className="text-xs text-red-600">{exportError}</p>}
+                    {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
                     {processedReceipts.length === 0 && (
-                        <p className="text-xs text-gray-500">Receipts will be available once processing completes.</p>
+                        <p className="text-xs text-gray-500">
+                            Receipts will be available once processing completes.
+                        </p>
                     )}
                 </div>
             </div>
-            {actionError && <p className="mb-4 text-sm text-red-600">{actionError}</p>}
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                 <Table>
                     <TableHeader>
@@ -230,7 +244,6 @@ function ReceipList() {
                             <TableHead>Size</TableHead>
                             <TableHead>Poids net (kg)</TableHead>
                             <TableHead>Status</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -240,7 +253,6 @@ function ReceipList() {
                                 typeof parsedData?.poids_net_kg === "number"
                                     ? parsedData.poids_net_kg.toLocaleString(undefined, { maximumFractionDigits: 2 })
                                     : "-";
-                            const isProcessed = receipt.status === "processed";
                             const isChecked = selectedIds.has(receipt._id);
 
                             return (
@@ -255,14 +267,12 @@ function ReceipList() {
                                         <input
                                             type="checkbox"
                                             checked={isChecked}
-                                            disabled={!isProcessed}
                                             onClick={(event) => event.stopPropagation()}
                                             onChange={(event) => {
                                                 event.stopPropagation();
-                                                if (!isProcessed) return;
                                                 toggleReceiptSelection(receipt._id);
                                             }}
-                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100"
+                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                             aria-label={`Select ${receipt.fileDisplayName || receipt.fileName}`}
                                         />
                                     </TableCell>
@@ -287,34 +297,6 @@ function ReceipList() {
                                         >
                                             {receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1)}
                                         </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    handleDownloadReceipt(receipt);
-                                                }}
-                                                disabled={downloadingReceiptId === receipt._id}
-                                            >
-                                                <Download className="h-4 w-4" />
-                                                <span className="hidden sm:inline">Download</span>
-                                            </Button>
-                                            <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    handleDeleteReceipt(receipt);
-                                                }}
-                                                disabled={deletingReceiptId === receipt._id}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                                <span className="hidden sm:inline">Delete</span>
-                                            </Button>
-                                        </div>
                                     </TableCell>
                                 </TableRow>
                             );
