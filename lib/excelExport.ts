@@ -37,7 +37,7 @@ type ReceiptItem = {
     totalPrice?: number | null;
 };
 
-type ReceiptDoc = Doc<"receipts"> & {
+export type ReceiptDoc = Doc<"receipts"> & {
     parsedData?: ParsedData | null;
     items?: ReceiptItem[] | null;
 };
@@ -49,7 +49,9 @@ type ColumnConfig = {
     isNumeric?: boolean;
 };
 
-type DynamicColumn = ColumnConfig & { value: string };
+type DynamicFieldConfig = ColumnConfig & {
+    value: (receipt: ReceiptDoc) => string | number | undefined | null;
+};
 
 const BASE_COLUMNS: ColumnConfig[] = [
     { header: "Date", key: "date", width: 15 },
@@ -98,12 +100,21 @@ const secondaryHeaderStyle = {
 
 const numberFormat = "#,##0.00";
 
-const DYNAMIC_FIELD_CONFIG: Array<{
-    key: string;
-    header: string;
-    width: number;
-    value: (receipt: ReceiptDoc) => string | number | undefined | null;
-}> = [
+const DYNAMIC_FIELD_CONFIG: DynamicFieldConfig[] = [
+    { key: "entreprise", header: "Entreprise", width: 22, value: (r) => r.parsedData?.entreprise },
+    { key: "description", header: "Description", width: 24, value: (r) => r.parsedData?.description },
+    { key: "telephone", header: "Téléphone", width: 18, value: (r) => r.parsedData?.telephone },
+    { key: "email", header: "Email", width: 26, value: (r) => r.parsedData?.email },
+    { key: "merchantName", header: "Marchand", width: 20, value: (r) => r.merchantName },
+    { key: "merchantContact", header: "Contact marchand", width: 22, value: (r) => r.merchantContact },
+    { key: "merchantAddress", header: "Adresse marchand", width: 28, value: (r) => r.merchantAddress },
+    {
+        key: "transactionAmount",
+        header: "Montant déclaré",
+        width: 18,
+        isNumeric: true,
+        value: (r) => numberFrom(r.transactionAmount) ?? r.transactionAmount,
+    },
     { key: "client", header: "Client", width: 18, value: (r) => r.parsedData?.client },
     { key: "destination", header: "Destination", width: 20, value: (r) => r.parsedData?.destination },
     { key: "produit", header: "Produit", width: 18, value: (r) => r.parsedData?.produit },
@@ -121,7 +132,6 @@ const DYNAMIC_FIELD_CONFIG: Array<{
     { key: "heureEntree", header: "Heure entrée", width: 14, value: (r) => r.parsedData?.heure_entree },
     { key: "dateSortie", header: "Date sortie", width: 16, value: (r) => r.parsedData?.date_sortie },
     { key: "heureSortie", header: "Heure sortie", width: 14, value: (r) => r.parsedData?.heure_sortie },
-    { key: "description", header: "Description", width: 24, value: (r) => r.parsedData?.description },
 ];
 
 const numberFrom = (value: unknown): number | undefined => {
@@ -171,21 +181,6 @@ const deriveRowValues = (receipt: ReceiptDoc): Record<string, string | number> =
     };
 };
 
-const collectDynamicColumns = (receipt: ReceiptDoc): DynamicColumn[] => {
-    const values: DynamicColumn[] = [];
-    for (const field of DYNAMIC_FIELD_CONFIG) {
-        const value = field.value(receipt);
-        if (value === undefined || value === null || value === "") continue;
-        values.push({
-            header: field.header,
-            key: field.key,
-            width: field.width,
-            value: `${value}`,
-        });
-    }
-    return values;
-};
-
 const applyStyle = (
     ws: any,
     XLSX: any,
@@ -228,17 +223,37 @@ const sumRows = (rows: Array<Record<string, string | number>>, key: string) =>
         return typeof value === "number" ? sum + value : sum;
     }, 0);
 
-export async function generateReceiptWorkbookBuffer(receipt: ReceiptDoc): Promise<ArrayBuffer> {
-    const XLSX = await import("xlsx-js-style");
-    const rowValues = deriveRowValues(receipt);
-    const dynamicColumns = collectDynamicColumns(receipt);
+const hasDisplayableValue = (value: string | number | undefined | null): boolean => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === "number") return Number.isFinite(value);
+    return `${value}`.trim().length > 0;
+};
+
+const selectDynamicFieldsForReceipts = (receipts: ReceiptDoc[]): DynamicFieldConfig[] =>
+    DYNAMIC_FIELD_CONFIG.filter((field) => receipts.some((receipt) => hasDisplayableValue(field.value(receipt))));
+
+const buildSummarySheet = (
+    XLSX: any,
+    receipts: ReceiptDoc[],
+    title: string,
+): { ws: any; dataRowCount: number; allColumns: ColumnConfig[] } => {
+    const dynamicFields = selectDynamicFieldsForReceipts(receipts);
     const allColumns: ColumnConfig[] = [
         ...BASE_COLUMNS,
-        ...dynamicColumns.map(({ header, key, width }) => ({ header, key, width })),
+        ...dynamicFields.map(({ header, key, width, isNumeric }) => ({ header, key, width, isNumeric })),
     ];
-    const rows = [rowValues];
-    dynamicColumns.forEach((col) => {
-        rows[0][col.key] = col.value;
+
+    const rows = receipts.map((receipt) => {
+        const rowValues = deriveRowValues(receipt);
+        for (const field of dynamicFields) {
+            const value = field.value(receipt);
+            if (!hasDisplayableValue(value)) {
+                rowValues[field.key] = "";
+            } else {
+                rowValues[field.key] = typeof value === "number" ? value : `${value}`;
+            }
+        }
+        return rowValues;
     });
 
     const headerRow = allColumns.map((col) => col.header);
@@ -248,17 +263,16 @@ export async function generateReceiptWorkbookBuffer(receipt: ReceiptDoc): Promis
         if (col.key === "poidsNetKg") return Number(sumRows(rows, col.key).toFixed(2));
         if (col.key === "totalGeneral") return Number(sumRows(rows, col.key).toFixed(2));
         if (col.key === "totalGeneralEngin") return Number(sumRows(rows, col.key).toFixed(2));
-        return index === 1 ? "" : "";
+        return "";
     });
 
     const ws = XLSX.utils.aoa_to_sheet([]);
-    const title = [[`Synthèse numérique - ${receipt.fileDisplayName || receipt.fileName}`]];
-    XLSX.utils.sheet_add_aoa(ws, title, { origin: "A1" });
+    XLSX.utils.sheet_add_aoa(ws, [[title]], { origin: "A1" });
 
     ws["!merges"] = ws["!merges"] || [];
     ws["!merges"].push({
         s: { r: 0, c: 0 },
-        e: { r: 0, c: allColumns.length - 1 },
+        e: { r: 0, c: Math.max(allColumns.length - 1, 0) },
     });
 
     XLSX.utils.sheet_add_aoa(ws, [headerRow], { origin: "A3" });
@@ -291,9 +305,20 @@ export async function generateReceiptWorkbookBuffer(receipt: ReceiptDoc): Promis
         alignment: { horizontal: "center", vertical: "center" },
     });
 
+    return { ws, dataRowCount: dataRows.length, allColumns };
+};
+
+export async function generateReceiptWorkbookBuffer(receipt: ReceiptDoc): Promise<ArrayBuffer> {
+    const XLSX = await import("xlsx-js-style");
+    const { ws, dataRowCount } = buildSummarySheet(
+        XLSX,
+        [receipt],
+        `Synthèse numérique - ${receipt.fileDisplayName || receipt.fileName}`,
+    );
+
     const items = Array.isArray(receipt.items) ? receipt.items : [];
     if (items.length > 0) {
-        const lineItemsTitleRow = 6 + dataRows.length;
+        const lineItemsTitleRow = 6 + dataRowCount;
         const lineItemsHeaderRow = lineItemsTitleRow + 1;
         const lineItemsStartRow = lineItemsHeaderRow + 1;
         const lineItemColumns = ["Article", "Quantité", "Prix unitaire", "Total"];
@@ -360,5 +385,20 @@ export async function generateReceiptWorkbookBuffer(receipt: ReceiptDoc): Promis
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Receipt");
+    return XLSX.write(wb, { bookType: "xlsx", type: "array", compression: true });
+}
+
+export async function generateReceiptsWorkbookBuffer(receipts: ReceiptDoc[]): Promise<ArrayBuffer> {
+    if (!Array.isArray(receipts) || receipts.length === 0) {
+        throw new Error("No receipts provided for export");
+    }
+    const XLSX = await import("xlsx-js-style");
+    const summaryTitle =
+        receipts.length === 1
+            ? `Synthèse numérique - ${receipts[0].fileDisplayName || receipts[0].fileName}`
+            : `Synthèse numérique - ${receipts.length} reçus traités`;
+    const { ws } = buildSummarySheet(XLSX, receipts, summaryTitle);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, receipts.length === 1 ? "Receipt" : "Receipts");
     return XLSX.write(wb, { bookType: "xlsx", type: "array", compression: true });
 }
