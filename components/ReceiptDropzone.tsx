@@ -10,7 +10,7 @@ import {
 import { useSchematicEntitlement } from "@schematichq/schematic-react";
 import { AlertCircle, CheckCircle, CloudUpload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
 
 const ACCEPTED_FILE_TYPES = new Set([
@@ -37,8 +37,12 @@ function ReceiptDropzone() {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
+    const [cameraError, setCameraError] = useState<string | null>(null);
+    const [capturedPhotos, setCapturedPhotos] = useState<Array<{ blob: Blob; url: string }>>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const cameraInputRef = useRef<HTMLInputElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
     const router = useRouter();
     const { user } = useUser();
     const {
@@ -48,6 +52,8 @@ function ReceiptDropzone() {
     } = useSchematicEntitlement("scans");
 
     const sensors = useSensors(useSensor(PointerSensor));
+    const isUserSignedIn = !!user;
+    const canUpload = isUserSignedIn && isFeatureEnabled;
 
     const handleUpload = useCallback(
         async (files: FileList | File[]) => {
@@ -139,16 +145,132 @@ function ReceiptDropzone() {
     const triggerFileInput = useCallback(() => {
         fileInputRef.current?.click();
     }, []);
-    const triggerCameraCapture = useCallback(() => {
-        cameraInputRef.current?.click();
+
+    const stopCameraStream = useCallback(() => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+        }
     }, []);
 
-    const isUserSignedIn = !!user;
-    const canUpload = isUserSignedIn && isFeatureEnabled;
+    const clearCapturedPhotos = useCallback(() => {
+        setCapturedPhotos((prev) => {
+            prev.forEach((photo) => URL.revokeObjectURL(photo.url));
+            return [];
+        });
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            clearCapturedPhotos();
+            stopCameraStream();
+        };
+    }, [clearCapturedPhotos, stopCameraStream]);
+
+    const openCamera = useCallback(async () => {
+        if (!canUpload) {
+            if (!isUserSignedIn) {
+                alert("Please sign in to take photos");
+            }
+            return;
+        }
+        if (!navigator.mediaDevices?.getUserMedia) {
+            setCameraError("Camera capture is not supported on this device.");
+            return;
+        }
+        try {
+            setCameraError(null);
+            clearCapturedPhotos();
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: "environment" } },
+            });
+            streamRef.current = stream;
+            setIsCameraOpen(true);
+            requestAnimationFrame(() => {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    videoRef.current.play().catch(() => {});
+                }
+            });
+        } catch (error) {
+            console.error("Unable to access camera", error);
+            setCameraError("Unable to access the camera. Please check permissions and try again.");
+        }
+    }, [canUpload, clearCapturedPhotos, isUserSignedIn]);
+
+    const handleCameraClose = useCallback(() => {
+        clearCapturedPhotos();
+        stopCameraStream();
+        setIsCameraOpen(false);
+    }, [clearCapturedPhotos, stopCameraStream]);
+
+    const capturePhoto = useCallback(() => {
+        const video = videoRef.current;
+        if (!video) {
+            setCameraError("Camera feed is not ready yet.");
+            return;
+        }
+        const canvas = document.createElement("canvas");
+        const width = video.videoWidth || 1280;
+        const height = video.videoHeight || 720;
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) {
+            setCameraError("Unable to capture photo. Please try again.");
+            return;
+        }
+        context.drawImage(video, 0, 0, width, height);
+        canvas.toBlob(
+            (blob) => {
+                if (!blob) {
+                    setCameraError("Failed to capture photo. Please try again.");
+                    return;
+                }
+                const url = URL.createObjectURL(blob);
+                setCapturedPhotos((prev) => [...prev, { blob, url }]);
+            },
+            "image/jpeg",
+            0.95,
+        );
+    }, []);
+
+    const removeCapturedPhoto = useCallback((url: string) => {
+        setCapturedPhotos((prev) => {
+            const next = prev.filter((photo) => {
+                const shouldKeep = photo.url !== url;
+                if (!shouldKeep) {
+                    URL.revokeObjectURL(photo.url);
+                }
+                return shouldKeep;
+            });
+            return next;
+        });
+    }, []);
+
+    const confirmCameraUpload = useCallback(async () => {
+        if (capturedPhotos.length === 0) {
+            setCameraError("Capture at least one photo before uploading.");
+            return;
+        }
+        const timestamp = Date.now();
+        const files = capturedPhotos.map((photo, index) => {
+            const fileName = `receipt-photo-${timestamp}-${index + 1}.jpg`;
+            return new File([photo.blob], fileName, { type: photo.blob.type || "image/jpeg" });
+        });
+        try {
+            await handleUpload(files);
+            handleCameraClose();
+        } catch (error) {
+            console.error("Failed to upload captured photos", error);
+            setCameraError("Unable to upload the captured photos. Please try again.");
+        }
+    }, [capturedPhotos, handleCameraClose, handleUpload]);
 
     return (
-        <DndContext sensors={sensors}>
-            <div className="w-full max-w-md mx-auto ">
+        <>
+            <DndContext sensors={sensors}>
+                <div className="w-full max-w-md mx-auto ">
                 <div
                     onDragOver={canUpload ? handleDragOver : undefined}
                     onDragLeave={canUpload ? handleDragLeave : undefined}
@@ -183,15 +305,6 @@ function ReceiptDropzone() {
                                 onChange={handleFileInputChange}
                                 className="hidden"
                             />
-                            <input
-                                type="file"
-                                ref={cameraInputRef}
-                                accept="image/*"
-                                capture="environment"
-                                multiple
-                                onChange={handleFileInputChange}
-                                className="hidden"
-                            />
 
                             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
                                 <Button
@@ -205,7 +318,7 @@ function ReceiptDropzone() {
                                     type="button"
                                     className="px-4 py-2 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled={!isFeatureEnabled}
-                                    onClick={triggerCameraCapture}
+                                    onClick={openCamera}
                                 >
                                     {isFeatureEnabled ? "Take Photo" : "Upgrade to upload"}
                                 </Button>
@@ -239,8 +352,76 @@ function ReceiptDropzone() {
                         </ul>
                     </div>
                 )}
-            </div>
-        </DndContext>
+                </div>
+            </DndContext>
+            {isCameraOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+                    <div className="w-full max-w-lg space-y-4 rounded-lg bg-white p-4 shadow-2xl">
+                        <div className="relative overflow-hidden rounded-lg bg-black">
+                            <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                muted
+                                className="h-80 w-full object-cover"
+                            />
+                        </div>
+                        {cameraError && <p className="text-sm text-red-600">{cameraError}</p>}
+                        <div className="flex flex-wrap gap-2">
+                            {capturedPhotos.length === 0 && (
+                                <p className="text-sm text-gray-500">No photos captured yet.</p>
+                            )}
+                            {capturedPhotos.map((photo, index) => (
+                                <div
+                                    key={photo.url}
+                                    className="relative h-20 w-20 overflow-hidden rounded border border-gray-200"
+                                >
+                                    <img
+                                        src={photo.url}
+                                        alt={`Captured receipt ${index + 1}`}
+                                        className="h-full w-full object-cover"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => removeCapturedPhoto(photo.url)}
+                                        className="absolute right-1 top-1 rounded-full bg-black/60 px-1 text-xs text-white"
+                                        aria-label="Remove photo"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                            <Button
+                                type="button"
+                                className="flex-1 bg-emerald-500 text-white hover:bg-emerald-600"
+                                onClick={capturePhoto}
+                            >
+                                Capture Photo
+                            </Button>
+                            <Button
+                                type="button"
+                                className="flex-1 bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={capturedPhotos.length === 0}
+                                onClick={confirmCameraUpload}
+                            >
+                                {capturedPhotos.length > 0
+                                    ? `Upload ${capturedPhotos.length} Photo${capturedPhotos.length > 1 ? "s" : ""}`
+                                    : "Upload"}
+                            </Button>
+                            <Button
+                                type="button"
+                                className="flex-1 bg-gray-200 text-gray-800 hover:bg-gray-300"
+                                onClick={handleCameraClose}
+                            >
+                                Close
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }
 export default ReceiptDropzone;
