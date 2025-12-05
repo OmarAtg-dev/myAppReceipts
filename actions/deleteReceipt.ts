@@ -11,7 +11,7 @@ type DeleteReceiptResult = {
 };
 
 export async function deleteReceipt(receiptId: Id<"receipts"> | string): Promise<DeleteReceiptResult> {
-    const { userId, getToken } = auth();
+    const { userId, getToken } = await auth();
     if (!userId) {
         return { success: false, error: "Not authenticated" };
     }
