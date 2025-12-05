@@ -1,20 +1,27 @@
 "use client";
 
+import { getFileDownloadUrl } from "@/actions/getFileDownloadUrl";
+import { deleteReceipt } from "@/actions/deleteReceipt";
+import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { StructuredReceiptData } from "@/types/structuredReceipt";
 import { useSchematicFlag } from "@schematichq/schematic-react";
 import { useQuery } from "convex/react";
-import { ChevronLeft, FileText, Lightbulb, Lock, Sparkles } from "lucide-react";
+import { ChevronLeft, FileText, Lightbulb, Lock, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 function Receipt() {
     const params = useParams<{ id: string }>();
     const [receiptId, setReceiptId] = useState<Id<"receipts"> | null>(null);
     const [isExporting, setIsExporting] = useState(false);
     const [exportError, setExportError] = useState<string | null>(null);
+    const [isDownloadingFile, setIsDownloadingFile] = useState(false);
+    const [downloadError, setDownloadError] = useState<string | null>(null);
+    const [isDeletingReceipt, setIsDeletingReceipt] = useState(false);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
     const router = useRouter();
     const isSummariesEnabled = useSchematicFlag("summary");
 
@@ -26,11 +33,58 @@ function Receipt() {
     const parsedData = (receipt?.parsedData as StructuredReceiptData) || undefined;
     const fileId = receipt?.fileId;
 
-    // Download URL
-    const downloadUrl = useQuery(
-        api.receipts.getReceiptDownloadUrl,
-        fileId ? { fileId } : "skip"
-    );
+    const handleFileDownload = useCallback(async () => {
+        if (!fileId) return;
+        setDownloadError(null);
+        setIsDownloadingFile(true);
+        try {
+            const result = await getFileDownloadUrl(fileId);
+            if (!result.success || !result.downloadUrl) {
+                throw new Error(result.error ?? "Unable to open the receipt file.");
+            }
+            const link = document.createElement("a");
+            link.href = result.downloadUrl;
+            link.download = receipt?.fileName ?? receipt?.fileDisplayName ?? "receipt";
+            link.rel = "noopener noreferrer";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error("Failed to download receipt file", error);
+            setDownloadError(
+                error instanceof Error ? error.message : "Unable to download the file. Please try again.",
+            );
+        } finally {
+            setIsDownloadingFile(false);
+        }
+    }, [fileId, receipt?.fileDisplayName, receipt?.fileName]);
+
+    const handleDeleteReceipt = useCallback(async () => {
+        if (!receipt?._id) return;
+        const confirmed = window.confirm(
+            "This will permanently delete the receipt and its file. Do you want to continue?",
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        setDeleteError(null);
+        setIsDeletingReceipt(true);
+        try {
+            const result = await deleteReceipt(receipt._id);
+            if (!result.success) {
+                throw new Error(result.error ?? "Failed to delete the receipt.");
+            }
+            router.push("/receipts");
+        } catch (error) {
+            console.error("Failed to delete receipt", error);
+            setDeleteError(
+                error instanceof Error ? error.message : "Unable to delete the receipt. Please try again.",
+            );
+        } finally {
+            setIsDeletingReceipt(false);
+        }
+    }, [receipt?._id, router]);
 
     // Convert URL param to Convex ID
     useEffect(() => {
@@ -80,6 +134,7 @@ function Receipt() {
     // Check if extracted data exists
     const hasExtractedData = !!parsedData;
     const summaryText = parsedData?.description || receipt.receiptSummary;
+
     const handleExcelExport = async () => {
         if (!receipt) return;
         setExportError(null);
@@ -195,16 +250,14 @@ function Receipt() {
                                     <FileText className="h-16 w-16 text-blue-500 mx-auto" />
                                     <p className="mt-4 text-sm text-gray-500">Receipt File</p>
                                     <div className="flex flex-col items-center space-y-3 mt-4">
-                                        {downloadUrl && (
-                                            <a
-                                                href={downloadUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="px-4 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 inline-block"
-                                            >
-                                                View File
-                                            </a>
-                                        )}
+                                        <Button
+                                            onClick={handleFileDownload}
+                                            disabled={!fileId || isDownloadingFile}
+                                            className="w-full justify-center"
+                                            variant="outline"
+                                        >
+                                            {isDownloadingFile ? "Opening…" : "View File"}
+                                        </Button>
 
                                         <button
                                             onClick={handleExcelExport}
@@ -218,12 +271,34 @@ function Receipt() {
                                             {isExporting ? "Generating Excel…" : "Download Excel"}
                                         </button>
 
+                                        <Button
+                                            onClick={handleDeleteReceipt}
+                                            disabled={isDeletingReceipt}
+                                            variant="destructive"
+                                            className="w-full justify-center"
+                                        >
+                                            {isDeletingReceipt ? (
+                                                "Deleting…"
+                                            ) : (
+                                                <>
+                                                    <Trash2 className="h-4 w-4" />
+                                                    Delete Receipt
+                                                </>
+                                            )}
+                                        </Button>
+
                                         <p className="text-xs text-gray-500 text-center">
                                             Generates a structured workbook with green table borders, totals, and all parsed values.
                                         </p>
 
                                         {exportError && (
                                             <p className="text-xs text-red-500 text-center">{exportError}</p>
+                                        )}
+                                        {downloadError && (
+                                            <p className="text-xs text-red-500 text-center">{downloadError}</p>
+                                        )}
+                                        {deleteError && (
+                                            <p className="text-xs text-red-500 text-center">{deleteError}</p>
                                         )}
                                     </div>
                                 </div>
