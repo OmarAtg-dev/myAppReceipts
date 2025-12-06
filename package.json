@@ -25,6 +25,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.28.0",
+    "exceljs": "^4.4.0",
     "inngest": "^3.45.1",
     "lucide-react": "^0.553.0",
     "next": "15.5.4",
@@ -56,6 +57,5 @@
       "esbuild",
       "@tailwindcss/oxide"
     ]
-  
   }
 }
