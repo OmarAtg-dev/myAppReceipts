@@ -3,6 +3,7 @@ import { getFileDownloadUrl } from "@/actions/getFileDownloadUrl";
 import { deleteReceipt } from "@/actions/deleteReceipt";
 import { Button } from "@/components/ui/button";
 import { ExcelExportModal } from "@/components/ExcelExportModal";
+import { LogoManagerModal } from "@/components/LogoManagerModal";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { StructuredReceiptData } from "@/types/structuredReceipt";
@@ -13,6 +14,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { ExcelExportMetadata, RiveOption } from "@/lib/excelExport";
+import { fetchWorkbookLogos } from "@/lib/logoAssets";
 
 function Receipt() {
     const params = useParams<{ id: string }>();
@@ -26,6 +28,8 @@ function Receipt() {
     const [downloadError, setDownloadError] = useState<string | null>(null);
     const [isDeletingReceipt, setIsDeletingReceipt] = useState(false);
     const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [isLogoModalOpen, setLogoModalOpen] = useState(false);
+    const [logoModalMode, setLogoModalMode] = useState<"enforce" | "manage">("enforce");
     const router = useRouter();
     const isSummariesEnabled = useSchematicFlag("summary");
 
@@ -34,8 +38,34 @@ function Receipt() {
         api.receipts.getReceiptById,
         receiptId ? { id: receiptId } : "skip"
     );
+    const brandingAssets = useQuery(api.branding.getBrandingAssets, {});
     const parsedData = (receipt?.parsedData as StructuredReceiptData) || undefined;
     const fileId = receipt?.fileId;
+    const ensureLogosReady = useCallback(() => {
+        if (!brandingAssets?.companyLogoStorageId || !brandingAssets?.clientLogoStorageId) {
+            setLogoModalMode("enforce");
+            setLogoModalOpen(true);
+            return false;
+        }
+        return true;
+    }, [brandingAssets]);
+
+    const downloadLogosForExport = useCallback(async () => {
+        if (!brandingAssets?.companyLogoStorageId || !brandingAssets?.clientLogoStorageId) {
+            throw new Error("Branding logos missing");
+        }
+        return fetchWorkbookLogos({
+            company: {
+                storageId: brandingAssets.companyLogoStorageId,
+                mimeType: brandingAssets.companyLogoType,
+            },
+            client: {
+                storageId: brandingAssets.clientLogoStorageId,
+                mimeType: brandingAssets.clientLogoType,
+            },
+        });
+    }, [brandingAssets]);
+
     const handleFileDownload = useCallback(async () => {
         if (!fileId) return;
         setDownloadError(null);
@@ -97,11 +127,17 @@ function Receipt() {
     const performExcelExport = useCallback(
         async (metadata: ExcelExportMetadata) => {
             if (!receipt) return;
+            if (!ensureLogosReady()) {
+                return;
+            }
             setExportError(null);
             setIsExporting(true);
             try {
-                const { generateReceiptWorkbookBuffer } = await import("@/lib/excelExport");
-                const buffer = await generateReceiptWorkbookBuffer(receipt, metadata);
+                const [logos, { generateReceiptWorkbookBuffer }] = await Promise.all([
+                    downloadLogosForExport(),
+                    import("@/lib/excelExport"),
+                ]);
+                const buffer = await generateReceiptWorkbookBuffer(receipt, metadata, logos);
                 const blob = new Blob([buffer], {
                     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 });
@@ -121,7 +157,7 @@ function Receipt() {
                 setIsExporting(false);
             }
         },
-        [receipt],
+        [receipt, ensureLogosReady, downloadLogosForExport],
     );
 
     const handleExportModalConfirm = useCallback(() => {
@@ -269,17 +305,34 @@ function Receipt() {
                                             {isDownloadingFile ? "Opening…" : "View File"}
                                         </Button>
 
-                                        <button
-                                            onClick={() => setExportModalOpen(true)}
-                                            disabled={isExporting}
-                                            className={`px-4 py-2 text-sm rounded inline-flex items-center justify-center ${
-                                                isExporting
-                                                    ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                                                    : "bg-emerald-500 text-white hover:bg-emerald-600"
-                                            }`}
-                                        >
-                                            {isExporting ? "Generating Excel…" : "Download Excel"}
-                                        </button>
+                                        <div className="flex flex-col gap-2 w-full">
+                                            <button
+                                                onClick={() => {
+                                                    if (ensureLogosReady()) {
+                                                        setExportModalOpen(true);
+                                                    }
+                                                }}
+                                                disabled={isExporting}
+                                                className={`px-4 py-2 text-sm rounded inline-flex items-center justify-center ${
+                                                    isExporting
+                                                        ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                                                        : "bg-emerald-500 text-white hover:bg-emerald-600"
+                                                }`}
+                                            >
+                                                {isExporting ? "Generating Excel…" : "Download Excel"}
+                                            </button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setLogoModalMode("manage");
+                                                    setLogoModalOpen(true);
+                                                }}
+                                            >
+                                                Manage logos
+                                            </Button>
+                                        </div>
 
 
                                         <Button
@@ -457,6 +510,16 @@ function Receipt() {
                 </div>
             </div>
         </div>
+        <LogoManagerModal
+            open={isLogoModalOpen}
+            mode={logoModalMode}
+            logos={brandingAssets ?? null}
+            onClose={() => setLogoModalOpen(false)}
+            onContinue={() => {
+                setLogoModalOpen(false);
+                setExportModalOpen(true);
+            }}
+        />
         <ExcelExportModal
             open={isExportModalOpen}
             section={exportSection}

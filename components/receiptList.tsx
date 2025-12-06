@@ -13,6 +13,8 @@ import { StructuredReceiptData } from "@/types/structuredReceipt";
 import { Button } from "./ui/button";
 import type { ExcelExportMetadata, ReceiptDoc, RiveOption } from "@/lib/excelExport";
 import { ExcelExportModal } from "./ExcelExportModal";
+import { LogoManagerModal } from "./LogoManagerModal";
+import { fetchWorkbookLogos } from "@/lib/logoAssets";
 
 function ReceipList() {
     const { user } = useUser();
@@ -22,6 +24,7 @@ function ReceipList() {
         api.receipts.getReceipts,
         user ? { userId: user.id } : "skip",
     );
+    const brandingAssets = useQuery(api.branding.getBrandingAssets, user ? {} : "skip");
 
     const [selectedIds, setSelectedIds] = useState<Set<Id<"receipts">>>(new Set());
     const [isExporting, setIsExporting] = useState(false);
@@ -33,6 +36,8 @@ function ReceipList() {
     const [isExportModalOpen, setExportModalOpen] = useState(false);
     const [exportSection, setExportSection] = useState("");
     const [exportRive, setExportRive] = useState<RiveOption>("VG 1 ere");
+    const [isLogoModalOpen, setLogoModalOpen] = useState(false);
+    const [logoModalMode, setLogoModalMode] = useState<"enforce" | "manage">("enforce");
 
     const processedReceipts = useMemo(
         () => (receipts ?? []).filter((receipt) => receipt.status === "processed"),
@@ -72,6 +77,31 @@ function ReceipList() {
         }
     }, [selectedIds, deleteWarning]);
 
+    const ensureLogosReady = useCallback(() => {
+        if (!brandingAssets?.companyLogoStorageId || !brandingAssets?.clientLogoStorageId) {
+            setLogoModalMode("enforce");
+            setLogoModalOpen(true);
+            return false;
+        }
+        return true;
+    }, [brandingAssets]);
+
+    const downloadLogosForExport = useCallback(async () => {
+        if (!brandingAssets?.companyLogoStorageId || !brandingAssets?.clientLogoStorageId) {
+            throw new Error("Branding logos missing");
+        }
+        return fetchWorkbookLogos({
+            company: {
+                storageId: brandingAssets.companyLogoStorageId,
+                mimeType: brandingAssets.companyLogoType,
+            },
+            client: {
+                storageId: brandingAssets.clientLogoStorageId,
+                mimeType: brandingAssets.clientLogoType,
+            },
+        });
+    }, [brandingAssets]);
+
     const toggleReceiptSelection = useCallback((id: Id<"receipts">) => {
         setSelectedIds((prev) => {
             const next = new Set(prev);
@@ -97,13 +127,20 @@ function ReceipList() {
                 return;
             }
 
+            if (!ensureLogosReady()) {
+                return;
+            }
+
             setExportWarning(null);
             setExportError(null);
             setIsExporting(true);
 
             try {
-                const { generateReceiptsWorkbookBuffer } = await import("@/lib/excelExport");
-                const buffer = await generateReceiptsWorkbookBuffer(eligible, metadata);
+                const [logos, { generateReceiptsWorkbookBuffer }] = await Promise.all([
+                    downloadLogosForExport(),
+                    import("@/lib/excelExport"),
+                ]);
+                const buffer = await generateReceiptsWorkbookBuffer(eligible, metadata, logos);
                 const blob = new Blob([buffer], {
                     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 });
@@ -123,7 +160,7 @@ function ReceipList() {
                 setIsExporting(false);
             }
         },
-        [receipts, selectedIds],
+        [receipts, selectedIds, ensureLogosReady, downloadLogosForExport],
     );
 
     const handleOpenExportModal = useCallback(() => {
@@ -135,9 +172,12 @@ function ReceipList() {
             setExportWarning("Select at least one processed receipt to export.");
             return;
         }
+        if (!ensureLogosReady()) {
+            return;
+        }
         setExportWarning(null);
         setExportModalOpen(true);
-    }, [receipts, selectedIds]);
+    }, [receipts, selectedIds, ensureLogosReady]);
 
     const handleModalConfirm = useCallback(() => {
         const trimmedSection = exportSection.trim();
@@ -233,6 +273,17 @@ function ReceipList() {
                             className="px-4"
                         >
                             {isExporting ? "Exporting…" : "Export to Excel"}
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setLogoModalMode("manage");
+                                setLogoModalOpen(true);
+                            }}
+                            variant="outline"
+                            className="px-4"
+                            disabled={!brandingAssets}
+                        >
+                            Manage logos
                         </Button>
                         <Button
                             onClick={handleDeleteSelected}
@@ -335,6 +386,16 @@ function ReceipList() {
                 </Table>
             </div>
         </div>
+        <LogoManagerModal
+            open={isLogoModalOpen}
+            mode={logoModalMode}
+            logos={brandingAssets ?? null}
+            onClose={() => setLogoModalOpen(false)}
+            onContinue={() => {
+                setLogoModalOpen(false);
+                setExportModalOpen(true);
+            }}
+        />
         <ExcelExportModal
             open={isExportModalOpen}
             section={exportSection}

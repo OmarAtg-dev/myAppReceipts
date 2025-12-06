@@ -63,4 +63,14 @@ export default defineSchema({
       }),
     ),
   }),
+  brandingAssets: defineTable({
+    userId: v.string(),
+    companyLogoStorageId: v.optional(v.id("_storage")),
+    companyLogoName: v.optional(v.string()),
+    companyLogoType: v.optional(v.string()),
+    clientLogoStorageId: v.optional(v.id("_storage")),
+    clientLogoName: v.optional(v.string()),
+    clientLogoType: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
 });
