@@ -4,6 +4,9 @@ import type { Doc } from "@/convex/_generated/dataModel";
 
 type ExcelJSModule = typeof import("exceljs");
 type Worksheet = import("exceljs").Worksheet;
+type Borders = import("exceljs").Borders;
+type Cell = import("exceljs").Cell;
+type BorderStyle = import("exceljs").BorderStyle;
 
 type ParsedInstallateur = {
     email?: string | null;
@@ -212,14 +215,16 @@ const fetchLogo = async (key: keyof typeof LOGO_URLS): Promise<{ base64: string;
     return result;
 };
 
-const createBorder = () => ({
-    top: { style: "thin", color: { argb: BORDER_COLOR } },
-    bottom: { style: "thin", color: { argb: BORDER_COLOR } },
-    left: { style: "thin", color: { argb: BORDER_COLOR } },
-    right: { style: "thin", color: { argb: BORDER_COLOR } },
+const THIN_BORDER_STYLE: BorderStyle = "thin";
+
+const createBorder = (): Partial<Borders> => ({
+    top: { style: THIN_BORDER_STYLE, color: { argb: BORDER_COLOR } },
+    bottom: { style: THIN_BORDER_STYLE, color: { argb: BORDER_COLOR } },
+    left: { style: THIN_BORDER_STYLE, color: { argb: BORDER_COLOR } },
+    right: { style: THIN_BORDER_STYLE, color: { argb: BORDER_COLOR } },
 });
 
-const applyTableCellStyle = (cell: import("exceljs").Cell, isNumeric: boolean) => {
+const applyTableCellStyle = (cell: Cell, isNumeric: boolean) => {
     cell.border = createBorder();
     cell.font = { name: "Calibri", size: 11 };
     cell.alignment = { horizontal: isNumeric ? "right" : "center", vertical: "middle", wrapText: true };
@@ -228,14 +233,14 @@ const applyTableCellStyle = (cell: import("exceljs").Cell, isNumeric: boolean) =
     }
 };
 
-const applyHeaderCellStyle = (cell: import("exceljs").Cell) => {
+const applyHeaderCellStyle = (cell: Cell) => {
     cell.border = createBorder();
     cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FF0F5132" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2F3E5" } };
     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
 };
 
-const applyTotalCellStyle = (cell: import("exceljs").Cell, isFirstColumn: boolean, isNumeric: boolean) => {
+const applyTotalCellStyle = (cell: Cell, isFirstColumn: boolean, isNumeric: boolean) => {
     cell.border = createBorder();
     cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FF0F5132" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC8E6C9" } };
