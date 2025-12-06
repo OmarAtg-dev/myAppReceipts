@@ -11,7 +11,8 @@ import { Doc, Id } from "@/convex/_generated/dataModel";
 import { FileText, Trash2 } from "lucide-react";
 import { StructuredReceiptData } from "@/types/structuredReceipt";
 import { Button } from "./ui/button";
-import type { ReceiptDoc } from "@/lib/excelExport";
+import type { ExcelExportMetadata, ReceiptDoc, RiveOption } from "@/lib/excelExport";
+import { ExcelExportModal } from "./ExcelExportModal";
 
 function ReceipList() {
     const { user } = useUser();
@@ -29,6 +30,9 @@ function ReceipList() {
     const [exportError, setExportError] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+    const [isExportModalOpen, setExportModalOpen] = useState(false);
+    const [exportSection, setExportSection] = useState("");
+    const [exportRive, setExportRive] = useState<RiveOption>("VG 1 ere");
 
     const processedReceipts = useMemo(
         () => (receipts ?? []).filter((receipt) => receipt.status === "processed"),
@@ -80,44 +84,69 @@ function ReceipList() {
         });
     }, []);
 
-    const handleExport = useCallback(async () => {
+    const handleExport = useCallback(
+        async (metadata: ExcelExportMetadata) => {
+            if (!receipts) return;
+            const eligible = receipts.filter(
+                (receipt): receipt is ReceiptDoc =>
+                    receipt.status === "processed" && selectedIds.has(receipt._id),
+            );
+
+            if (eligible.length === 0) {
+                setExportWarning("Select at least one processed receipt to export.");
+                return;
+            }
+
+            setExportWarning(null);
+            setExportError(null);
+            setIsExporting(true);
+
+            try {
+                const { generateReceiptsWorkbookBuffer } = await import("@/lib/excelExport");
+                const buffer = await generateReceiptsWorkbookBuffer(eligible, metadata);
+                const blob = new Blob([buffer], {
+                    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                const timestamp = new Date().toISOString().split("T")[0];
+                link.href = url;
+                link.download = `receipts-${timestamp}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error("Failed to export receipts", error);
+                setExportError("Unable to export the selected receipts. Please try again.");
+            } finally {
+                setIsExporting(false);
+            }
+        },
+        [receipts, selectedIds],
+    );
+
+    const handleOpenExportModal = useCallback(() => {
         if (!receipts) return;
         const eligible = receipts.filter(
-            (receipt): receipt is ReceiptDoc =>
-                receipt.status === "processed" && selectedIds.has(receipt._id),
+            (receipt) => receipt.status === "processed" && selectedIds.has(receipt._id),
         );
-
         if (eligible.length === 0) {
             setExportWarning("Select at least one processed receipt to export.");
             return;
         }
-
         setExportWarning(null);
-        setExportError(null);
-        setIsExporting(true);
-
-        try {
-            const { generateReceiptsWorkbookBuffer } = await import("@/lib/excelExport");
-            const buffer = await generateReceiptsWorkbookBuffer(eligible);
-            const blob = new Blob([buffer], {
-                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            const timestamp = new Date().toISOString().split("T")[0];
-            link.href = url;
-            link.download = `receipts-${timestamp}.xlsx`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error("Failed to export receipts", error);
-            setExportError("Unable to export the selected receipts. Please try again.");
-        } finally {
-            setIsExporting(false);
-        }
+        setExportModalOpen(true);
     }, [receipts, selectedIds]);
+
+    const handleModalConfirm = useCallback(() => {
+        const trimmedSection = exportSection.trim();
+        if (!trimmedSection) {
+            return;
+        }
+        setExportModalOpen(false);
+        void handleExport({ section: trimmedSection, rive: exportRive });
+    }, [exportSection, exportRive, handleExport]);
 
     const handleDeleteSelected = useCallback(async () => {
         if (selectedIds.size === 0) {
@@ -183,6 +212,7 @@ function ReceipList() {
     }
 
     return (
+        <>
         <div className="w-full">
             <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -198,7 +228,7 @@ function ReceipList() {
                     <p className="text-sm font-medium text-gray-600">Actions</p>
                     <div className="flex flex-wrap gap-2">
                         <Button
-                            onClick={handleExport}
+                            onClick={handleOpenExportModal}
                             disabled={isExporting || processedReceipts.length === 0}
                             className="px-4"
                         >
@@ -305,8 +335,19 @@ function ReceipList() {
                 </Table>
             </div>
         </div>
+        <ExcelExportModal
+            open={isExportModalOpen}
+            section={exportSection}
+            rive={exportRive}
+            isSubmitting={isExporting}
+            onSectionChange={setExportSection}
+            onRiveChange={setExportRive}
+            onCancel={() => setExportModalOpen(false)}
+            onConfirm={handleModalConfirm}
+        />
+        </>
     );
-     
+
 }
 
 export default ReceipList;

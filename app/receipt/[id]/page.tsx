@@ -2,6 +2,7 @@
 import { getFileDownloadUrl } from "@/actions/getFileDownloadUrl";
 import { deleteReceipt } from "@/actions/deleteReceipt";
 import { Button } from "@/components/ui/button";
+import { ExcelExportModal } from "@/components/ExcelExportModal";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { StructuredReceiptData } from "@/types/structuredReceipt";
@@ -11,12 +12,16 @@ import { ChevronLeft, FileText, Lightbulb, Lock, Sparkles, Trash2 } from "lucide
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import type { ExcelExportMetadata, RiveOption } from "@/lib/excelExport";
 
 function Receipt() {
     const params = useParams<{ id: string }>();
     const [receiptId, setReceiptId] = useState<Id<"receipts"> | null>(null);
     const [isExporting, setIsExporting] = useState(false);
     const [exportError, setExportError] = useState<string | null>(null);
+    const [isExportModalOpen, setExportModalOpen] = useState(false);
+    const [exportSection, setExportSection] = useState("");
+    const [exportRive, setExportRive] = useState<RiveOption>("VG 1 ere");
     const [isDownloadingFile, setIsDownloadingFile] = useState(false);
     const [downloadError, setDownloadError] = useState<string | null>(null);
     const [isDeletingReceipt, setIsDeletingReceipt] = useState(false);
@@ -127,33 +132,46 @@ function Receipt() {
     const hasExtractedData = !!parsedData;
     const summaryText = parsedData?.description || receipt.receiptSummary;
 
-    const handleExcelExport = async () => {
-        if (!receipt) return;
-        setExportError(null);
-        setIsExporting(true);
-        try {
-            const { generateReceiptWorkbookBuffer } = await import("@/lib/excelExport");
-            const buffer = await generateReceiptWorkbookBuffer(receipt);
-            const blob = new Blob([buffer], {
-                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            const sanitizedName = (receipt.fileDisplayName || receipt.fileName).replace(/\.[^.]+$/, "");
-            link.href = url;
-            link.download = `${sanitizedName || "receipt"}-structured.xlsx`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error("Failed to export Excel", error);
-            setExportError("Unable to generate the Excel file. Please try again.");
-        } finally {
-            setIsExporting(false);
+    const performExcelExport = useCallback(
+        async (metadata: ExcelExportMetadata) => {
+            if (!receipt) return;
+            setExportError(null);
+            setIsExporting(true);
+            try {
+                const { generateReceiptWorkbookBuffer } = await import("@/lib/excelExport");
+                const buffer = await generateReceiptWorkbookBuffer(receipt, metadata);
+                const blob = new Blob([buffer], {
+                    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                const sanitizedName = (receipt.fileDisplayName || receipt.fileName).replace(/\.[^.]+$/, "");
+                link.href = url;
+                link.download = `${sanitizedName || "receipt"}-structured.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error("Failed to export Excel", error);
+                setExportError("Unable to generate the Excel file. Please try again.");
+            } finally {
+                setIsExporting(false);
+            }
+        },
+        [receipt],
+    );
+
+    const handleExportModalConfirm = useCallback(() => {
+        const trimmedSection = exportSection.trim();
+        if (!trimmedSection) {
+            return;
         }
-    };
+        setExportModalOpen(false);
+        void performExcelExport({ section: trimmedSection, rive: exportRive });
+    }, [exportSection, exportRive, performExcelExport]);
     return (
+        <>
         <div className="container mx-auto py-10 px-4">
             <div className="max-w-4xl mx-auto">
                 <nav className="mb-6">
@@ -252,7 +270,7 @@ function Receipt() {
                                         </Button>
 
                                         <button
-                                            onClick={handleExcelExport}
+                                            onClick={() => setExportModalOpen(true)}
                                             disabled={isExporting}
                                             className={`px-4 py-2 text-sm rounded inline-flex items-center justify-center ${
                                                 isExporting
@@ -439,6 +457,17 @@ function Receipt() {
                 </div>
             </div>
         </div>
+        <ExcelExportModal
+            open={isExportModalOpen}
+            section={exportSection}
+            rive={exportRive}
+            isSubmitting={isExporting}
+            onSectionChange={setExportSection}
+            onRiveChange={setExportRive}
+            onCancel={() => setExportModalOpen(false)}
+            onConfirm={handleExportModalConfirm}
+        />
+        </>
     );
 }
 

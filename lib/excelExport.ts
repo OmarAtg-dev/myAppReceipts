@@ -2,10 +2,18 @@
 
 import type { Doc } from "@/convex/_generated/dataModel";
 
-
 type XLSXModule = typeof import("xlsx-js-style");
 type Worksheet = import("xlsx-js-style").WorkSheet;
 type CellObject = import("xlsx-js-style").CellObject;
+
+export const RIVE_OPTIONS = ["VG 1 ere", "VG 2 EME"] as const;
+export type RiveOption = (typeof RIVE_OPTIONS)[number];
+
+export type ExcelExportMetadata = {
+    section: string;
+    rive: RiveOption;
+};
+
 type ParsedInstallateur = {
     email?: string | null;
     nom?: string | null;
@@ -46,26 +54,56 @@ export type ReceiptDoc = Doc<"receipts"> & {
     items?: ReceiptItem[] | null;
 };
 
-type ColumnConfig = {
+type DerivedReceiptValues = {
+    date: string;
+    section: string;
+    ribs: string;
+    numberOfUnits: string;
+    poidsNetKg: number;
+    totalGeneral: number;
+    totalGeneralEngin: number;
+    currency: string;
+};
+
+type OfficialRow = {
+    date: string;
+    section: string;
+    rive: string;
+    numberOfUnits: string;
+    poidsNetKg: number;
+    totalGeneralEngin: number;
+    totalGeneralTon: number;
+};
+
+type OfficialColumn = {
     header: string;
-    key: string;
+    key: keyof OfficialRow;
     width: number;
     isNumeric?: boolean;
 };
 
-type DynamicFieldConfig = ColumnConfig & {
-    value: (receipt: ReceiptDoc) => string | number | undefined | null;
-};
-const BASE_COLUMNS: ColumnConfig[] = [
-    { header: "Date", key: "date", width: 15 },
+const OFFICIAL_COLUMNS: OfficialColumn[] = [
+    { header: "LA DATE", key: "date", width: 16 },
     { header: "Section", key: "section", width: 18 },
-    { header: "Ribs", key: "ribs", width: 18 },
-    { header: "N° bons", key: "numberOfUnits", width: 14 },
-    { header: "Poids net (kg)", key: "poidsNetKg", width: 18, isNumeric: true },
-    { header: "Total général", key: "totalGeneral", width: 18, isNumeric: true },
-    { header: "Total général engin", key: "totalGeneralEngin", width: 22, isNumeric: true },
-    { header: "Devise", key: "currency", width: 10 },
+    { header: "Rive", key: "rive", width: 14 },
+    { header: "N° bons", key: "numberOfUnits", width: 12 },
+    { header: "POIDS NET (KG)", key: "poidsNetKg", width: 18, isNumeric: true },
+    { header: "TOTAL GÉNÉRAL ENG.", key: "totalGeneralEngin", width: 20, isNumeric: true },
+    { header: "TOTAL GÉNÉRAL EN TONE", key: "totalGeneralTon", width: 24, isNumeric: true },
 ];
+
+const HEADER_LINES = [
+    "ROYAUME DU MAROC",
+    "MINISTÈRE DE L'EQUIPEMENT ET DE L'EAU",
+    "DIRECTION RÉGIONALE DE L'EQUIPEMENT ET DE L'EAU DE FÈS",
+    "DIRECTION PROVINCIALE DE L'EQUIPEMENT ET DE L'EAU DE TAOUNATE",
+    "Travaux de dédoublement de la RN entre Fès et Taounate du PK769+050 au PK788+000, Province de Taounate",
+    "Marché N° TAO/01/2024",
+];
+
+const DESIGNATION_LABEL = "Désignation des prestations";
+const DESIGNATION_VALUE = "Mise en œuvre de GB3 014 classe 3 pour couche de base";
+const FOOTER_LABELS = { left: "CONTRÔLE INTERNE", right: "CONTRÔLE EXTERIEUR" };
 
 const BORDER_COLOR = "FF2E7D32";
 
@@ -80,63 +118,63 @@ const borderStyle = {
 
 const headerCellStyle = {
     ...borderStyle,
-    font: { bold: true, color: { rgb: "FF0F5132" } },
+    font: { bold: true, color: { rgb: "FF0F5132" }, name: "Calibri" },
     fill: { patternType: "solid", fgColor: { rgb: "FFE2F3E5" } },
     alignment: { horizontal: "center", vertical: "center" },
 };
 
 const dataCellStyle = {
     ...borderStyle,
-    alignment: { horizontal: "left", vertical: "center" },
+    font: { name: "Calibri" },
+    alignment: { horizontal: "center", vertical: "center" },
 };
 
 const totalCellStyle = {
     ...borderStyle,
-    font: { bold: true, color: { rgb: "FF0F5132" } },
+    font: { bold: true, color: { rgb: "FF0F5132" }, name: "Calibri" },
     fill: { patternType: "solid", fgColor: { rgb: "FFC8E6C9" } },
+    alignment: { horizontal: "center", vertical: "center" },
 };
 
-const secondaryHeaderStyle = {
-    ...headerCellStyle,
-    fill: { patternType: "solid", fgColor: { rgb: "FFDFF4FF" } },
+const mainTitleStyle = {
+    font: { bold: true, sz: 16, name: "Cambria" },
+    alignment: { horizontal: "center", vertical: "center" },
 };
 
-const numberFormat = "#,##0.00";
+const subtitleStyle = {
+    font: { bold: true, sz: 13, name: "Cambria" },
+    alignment: { horizontal: "center", vertical: "center" },
+};
 
-const DYNAMIC_FIELD_CONFIG: DynamicFieldConfig[] = [
-    { key: "entreprise", header: "Entreprise", width: 22, value: (r) => r.parsedData?.entreprise },
-    { key: "description", header: "Description", width: 24, value: (r) => r.parsedData?.description },
-    { key: "telephone", header: "Téléphone", width: 18, value: (r) => r.parsedData?.telephone },
-    { key: "email", header: "Email", width: 26, value: (r) => r.parsedData?.email },
-    { key: "merchantName", header: "Marchand", width: 20, value: (r) => r.merchantName },
-    { key: "merchantContact", header: "Contact marchand", width: 22, value: (r) => r.merchantContact },
-    { key: "merchantAddress", header: "Adresse marchand", width: 28, value: (r) => r.merchantAddress },
-    {
-        key: "transactionAmount",
-        header: "Montant déclaré",
-        width: 18,
-        isNumeric: true,
-        value: (r) => numberFrom(r.transactionAmount) ?? r.transactionAmount,
-    },
-    { key: "client", header: "Client", width: 18, value: (r) => r.parsedData?.client },
-    { key: "destination", header: "Destination", width: 20, value: (r) => r.parsedData?.destination },
-    { key: "produit", header: "Produit", width: 18, value: (r) => r.parsedData?.produit },
-    { key: "bonLivraison", header: "Bon de livraison", width: 20, value: (r) => r.parsedData?.bon_livraison },
-    { key: "transporteur", header: "Transporteur", width: 20, value: (r) => r.parsedData?.transporteur },
-    { key: "matricule", header: "Matricule", width: 16, value: (r) => r.parsedData?.matricule },
-    { key: "installateur", header: "Installateur", width: 20, value: (r) => r.parsedData?.installateur?.nom },
-    {
-        key: "installateurContact",
-        header: "Contact installateur",
-        width: 22,
-        value: (r) => r.parsedData?.installateur?.telephone,
-    },
-    { key: "dateEntree", header: "Date entrée", width: 16, value: (r) => r.parsedData?.date_entree },
-    { key: "heureEntree", header: "Heure entrée", width: 14, value: (r) => r.parsedData?.heure_entree },
-    { key: "dateSortie", header: "Date sortie", width: 16, value: (r) => r.parsedData?.date_sortie },
-    { key: "heureSortie", header: "Heure sortie", width: 14, value: (r) => r.parsedData?.heure_sortie },
-    // { key: "description", header: "Description", width: 24, value: (r) => r.parsedData?.description },
-];
+const infoLineStyle = {
+    font: { sz: 11, name: "Cambria" },
+    alignment: { horizontal: "center", vertical: "center" },
+};
+
+const designationLabelStyle = {
+    ...borderStyle,
+    font: { bold: true, sz: 12, name: "Cambria", color: { rgb: "FF1B5E20" } },
+    fill: { patternType: "solid", fgColor: { rgb: "FFF1F8E9" } },
+    alignment: { horizontal: "left", vertical: "center" },
+};
+
+const designationValueStyle = {
+    ...borderStyle,
+    font: { sz: 11, name: "Cambria" },
+    alignment: { horizontal: "left", vertical: "center" },
+};
+
+const footerCellStyleLeft = {
+    font: { bold: true, name: "Cambria" },
+    alignment: { horizontal: "center", vertical: "center" },
+};
+
+const footerCellStyleRight = {
+    font: { bold: true, name: "Cambria" },
+    alignment: { horizontal: "center", vertical: "center" },
+};
+
+const numberFormat = "#,##0.000";
 
 const numberFrom = (value: unknown): number | undefined => {
     if (value === null || value === undefined) return undefined;
@@ -157,7 +195,7 @@ const formatDateValue = (date?: string | null): string => {
     return date;
 };
 
-const deriveRowValues = (receipt: ReceiptDoc): Record<string, string | number> => {
+const deriveRowValues = (receipt: ReceiptDoc): DerivedReceiptValues => {
     const parsed = receipt.parsedData;
     const uploadDate = new Date(receipt.uploadedAt ?? Date.now());
     const items = Array.isArray(receipt.items) ? receipt.items : [];
@@ -178,11 +216,29 @@ const deriveRowValues = (receipt: ReceiptDoc): Record<string, string | number> =
         section: parsed?.destination || parsed?.produit || receipt.merchantName || "Section principale",
         ribs: parsed?.matricule || parsed?.transporteur || receipt.merchantContact || "",
         numberOfUnits: parsed?.numero_pesee || (items.length ? `${items.length}` : "1"),
-        poidsNetKg: Number(poidsNet?.toFixed(2) || 0),
-        totalGeneral: Number(totalGeneral?.toFixed(2) || 0),
-        totalGeneralEngin: Number(totalGeneralEngin?.toFixed(2) || 0),
+        poidsNetKg: Number(poidsNet?.toFixed(3) || 0),
+        totalGeneral: Number(totalGeneral?.toFixed(3) || 0),
+        totalGeneralEngin: Number(totalGeneralEngin?.toFixed(3) || 0),
         currency: receipt.currency || "",
     };
+};
+
+const buildOfficialRows = (receipts: ReceiptDoc[], metadata: ExcelExportMetadata): OfficialRow[] => {
+    const normalizedSection = metadata.section.trim() || "Section";
+    return receipts.map((receipt) => {
+        const derived = deriveRowValues(receipt);
+        const engin = derived.totalGeneralEngin;
+        const tonValue = Number((engin / 1000).toFixed(3));
+        return {
+            date: derived.date,
+            section: normalizedSection,
+            rive: metadata.rive,
+            numberOfUnits: derived.numberOfUnits,
+            poidsNetKg: derived.poidsNetKg,
+            totalGeneralEngin: engin,
+            totalGeneralTon: tonValue,
+        };
+    });
 };
 
 const getMerges = (ws: Worksheet) => {
@@ -192,7 +248,6 @@ const getMerges = (ws: Worksheet) => {
     return ws["!merges"];
 };
 
-
 const applyStyle = (
     ws: Worksheet,
     XLSX: XLSXModule,
@@ -201,7 +256,7 @@ const applyStyle = (
     style: Record<string, unknown>,
     numberFormatOverride?: string,
 ): void => {
-  const cellAddress = XLSX.utils.encode_cell({ r: rowIndex - 1, c: columnIndex - 1 });
+    const cellAddress = XLSX.utils.encode_cell({ r: rowIndex - 1, c: columnIndex - 1 });
     if (!ws[cellAddress]) {
         ws[cellAddress] = { t: "s", v: "" };
     }
@@ -230,185 +285,119 @@ const styleRange = (
     }
 };
 
-const sumRows = (rows: Array<Record<string, string | number>>, key: string) =>
+const sumRows = <T extends Record<string, unknown>>(rows: T[], key: keyof T) =>
     rows.reduce((sum, row) => {
         const value = row[key];
         return typeof value === "number" ? sum + value : sum;
     }, 0);
 
-    const hasDisplayableValue = (value: string | number | undefined | null): boolean => {
-        if (value === undefined || value === null) return false;
-        if (typeof value === "number") return Number.isFinite(value);
-        return `${value}`.trim().length > 0;
-    };
-    
-    const selectDynamicFieldsForReceipts = (receipts: ReceiptDoc[]): DynamicFieldConfig[] =>
-
-        DYNAMIC_FIELD_CONFIG.filter((field) => receipts.some((receipt) => hasDisplayableValue(field.value(receipt))));
-    
-    const buildSummarySheet = (
-        XLSX: XLSXModule,
-        receipts: ReceiptDoc[],
-        title: string,
-    ): { ws: Worksheet; dataRowCount: number; allColumns: ColumnConfig[] } => {
-        const dynamicFields = selectDynamicFieldsForReceipts(receipts);
-    const allColumns: ColumnConfig[] = [
-        ...BASE_COLUMNS,
-        ...dynamicFields.map(({ header, key, width, isNumeric }) => ({ header, key, width, isNumeric })),
-    ];
-    const rows = receipts.map((receipt) => {
-        const rowValues = deriveRowValues(receipt);
-        for (const field of dynamicFields) {
-            const value = field.value(receipt);
-            if (!hasDisplayableValue(value)) {
-                rowValues[field.key] = "";
-            } else {
-                rowValues[field.key] = typeof value === "number" ? value : `${value}`;
-            }
-        }
-        return rowValues;
-    });
-
-    const headerRow = allColumns.map((col) => col.header);
-    const dataRows = rows.map((row) => allColumns.map((col) => row[col.key] ?? ""));
-    const totalRowTemplate = allColumns.map((col, index) => {
-        if (index === 0) return "TOTAL GÉNÉRAL";
-        if (col.key === "poidsNetKg") return Number(sumRows(rows, col.key).toFixed(2));
-        if (col.key === "totalGeneral") return Number(sumRows(rows, col.key).toFixed(2));
-        if (col.key === "totalGeneralEngin") return Number(sumRows(rows, col.key).toFixed(2));
-        return "";
-    });
-
+const buildOfficialWorksheet = (
+    XLSX: XLSXModule,
+    receipts: ReceiptDoc[],
+    metadata: ExcelExportMetadata,
+): { ws: Worksheet } => {
+    const rows = buildOfficialRows(receipts, metadata);
     const ws = XLSX.utils.aoa_to_sheet([]);
-    XLSX.utils.sheet_add_aoa(ws, [[title]], { origin: "A1" });
+    const columnCount = OFFICIAL_COLUMNS.length;
 
-    getMerges(ws).push({
-        s: { r: 0, c: 0 },
-        e: { r: 0, c: Math.max(allColumns.length - 1, 0) },
-    });
-
-    XLSX.utils.sheet_add_aoa(ws, [headerRow], { origin: "A3" });
-    XLSX.utils.sheet_add_aoa(ws, dataRows, { origin: "A4" });
-    XLSX.utils.sheet_add_aoa(ws, [totalRowTemplate], { origin: `A${4 + dataRows.length}` });
-
-    ws["!cols"] = allColumns.map((col) => ({ wch: col.width }));
-
-    const numericColumnIndexes = new Set(
-        allColumns
-            .map((col, idx) => (col.isNumeric ? idx + 1 : null))
-            .filter((value): value is number => value !== null),
-    );
-
-    styleRange(ws, XLSX, 3, 3, 1, allColumns.length, headerCellStyle, numericColumnIndexes);
-    styleRange(ws, XLSX, 4, 3 + dataRows.length, 1, allColumns.length, dataCellStyle, numericColumnIndexes);
-    styleRange(
-        ws,
-        XLSX,
-        4 + dataRows.length,
-        4 + dataRows.length,
-        1,
-        allColumns.length,
-        totalCellStyle,
-        numericColumnIndexes,
-    );
-
-    applyStyle(ws, XLSX, 1, 1, {
-        font: { bold: true, sz: 16, color: { rgb: "FF0F5132" } },
-        alignment: { horizontal: "center", vertical: "center" },
-    });
-    return { ws, dataRowCount: dataRows.length, allColumns };
-};
-
-export async function generateReceiptWorkbookBuffer(receipt: ReceiptDoc): Promise<ArrayBuffer> {
-    const XLSX = await import("xlsx-js-style");
-    const { ws, dataRowCount } = buildSummarySheet(
-        XLSX,
-        [receipt],
-        `Synthèse numérique - ${receipt.fileDisplayName || receipt.fileName}`,
-    );
-
-    const items = Array.isArray(receipt.items) ? receipt.items : [];
-    if (items.length > 0) {
-       const lineItemsTitleRow = 6 + dataRowCount;
-        const lineItemsHeaderRow = lineItemsTitleRow + 1;
-        const lineItemsStartRow = lineItemsHeaderRow + 1;
-        const lineItemColumns = ["Article", "Quantité", "Prix unitaire", "Total"];
-        const lineItemData = items.map((item) => [
-            item.name,
-            item.quantity ?? "",
-            item.unitPrice ?? "",
-            item.totalPrice ?? "",
-        ]);
-        const lineItemTotal = [
-            "Total articles",
-            "",
-            "",
-            lineItemData.reduce((sum, row) => sum + (typeof row[3] === "number" ? row[3] : 0), 0),
-        ];
-
-        XLSX.utils.sheet_add_aoa(ws, [["Détails des articles"]], { origin: `A${lineItemsTitleRow}` });
-        XLSX.utils.sheet_add_aoa(ws, [lineItemColumns], { origin: `A${lineItemsHeaderRow}` });
-        XLSX.utils.sheet_add_aoa(ws, lineItemData, { origin: `A${lineItemsStartRow}` });
-        XLSX.utils.sheet_add_aoa(ws, [lineItemTotal], { origin: `A${lineItemsStartRow + lineItemData.length}` });
-
+    HEADER_LINES.forEach((line, index) => {
+        const rowNumber = index + 1;
+        XLSX.utils.sheet_add_aoa(ws, [[line]], { origin: `A${rowNumber}` });
         getMerges(ws).push({
-            s: { r: lineItemsTitleRow - 1, c: 0 },
-            e: { r: lineItemsTitleRow - 1, c: lineItemColumns.length - 1 },
+            s: { r: rowNumber - 1, c: 0 },
+            e: { r: rowNumber - 1, c: columnCount - 1 },
         });
+        const style = index === 0 ? mainTitleStyle : index <= 3 ? subtitleStyle : infoLineStyle;
+        styleRange(ws, XLSX, rowNumber, rowNumber, 1, columnCount, style);
+    });
 
-        styleRange(ws, XLSX, lineItemsTitleRow, lineItemsTitleRow, 1, lineItemColumns.length, {
-            font: { bold: true, color: { rgb: "FF0F5132" }, sz: 14 },
-            alignment: { horizontal: "left", vertical: "center" },
-        });
+    const designationLabelRow = HEADER_LINES.length + 2;
+    const designationValueRow = designationLabelRow + 1;
+    const tableHeaderRow = designationValueRow + 2;
+    const dataStartRow = tableHeaderRow + 1;
+    const totalRowIndex = dataStartRow + rows.length;
+    const footerRowIndex = totalRowIndex + 2;
 
-        const lineItemNumericColumns = new Set([2, 3, 4]);
-        styleRange(
-            ws,
-            XLSX,
-            lineItemsHeaderRow,
-            lineItemsHeaderRow,
-            1,
-            lineItemColumns.length,
-            secondaryHeaderStyle,
-            lineItemNumericColumns,
-        );
-        styleRange(
-            ws,
-            XLSX,
-            lineItemsStartRow,
-            lineItemsStartRow + lineItemData.length,
-            1,
-            lineItemColumns.length,
-            dataCellStyle,
-            lineItemNumericColumns,
-        );
-        styleRange(
-            ws,
-            XLSX,
-            lineItemsStartRow + lineItemData.length,
-            lineItemsStartRow + lineItemData.length,
-            1,
-            lineItemColumns.length,
-            totalCellStyle,
-            lineItemNumericColumns,
-        );
+    XLSX.utils.sheet_add_aoa(ws, [[DESIGNATION_LABEL]], { origin: `A${designationLabelRow}` });
+    getMerges(ws).push({
+        s: { r: designationLabelRow - 1, c: 0 },
+        e: { r: designationLabelRow - 1, c: columnCount - 1 },
+    });
+    styleRange(ws, XLSX, designationLabelRow, designationLabelRow, 1, columnCount, designationLabelStyle);
+
+    XLSX.utils.sheet_add_aoa(ws, [[DESIGNATION_VALUE]], { origin: `A${designationValueRow}` });
+    getMerges(ws).push({
+        s: { r: designationValueRow - 1, c: 0 },
+        e: { r: designationValueRow - 1, c: columnCount - 1 },
+    });
+    styleRange(ws, XLSX, designationValueRow, designationValueRow, 1, columnCount, designationValueStyle);
+
+    const headerRow = OFFICIAL_COLUMNS.map((col) => col.header);
+    XLSX.utils.sheet_add_aoa(ws, [headerRow], { origin: `A${tableHeaderRow}` });
+
+    const dataRows = rows.map((row) => OFFICIAL_COLUMNS.map((col) => row[col.key] ?? ""));
+    if (dataRows.length > 0) {
+        XLSX.utils.sheet_add_aoa(ws, dataRows, { origin: `A${dataStartRow}` });
     }
 
+    const totalRow = [
+        "TOTAL",
+        "",
+        "",
+        "",
+        Number(sumRows(rows, "poidsNetKg").toFixed(3)),
+        Number(sumRows(rows, "totalGeneralEngin").toFixed(3)),
+        Number(sumRows(rows, "totalGeneralTon").toFixed(3)),
+    ];
+    XLSX.utils.sheet_add_aoa(ws, [totalRow], { origin: `A${totalRowIndex}` });
+
+    const footerRow = Array(columnCount).fill("");
+    footerRow[0] = FOOTER_LABELS.left;
+    footerRow[columnCount - 3] = FOOTER_LABELS.right;
+    XLSX.utils.sheet_add_aoa(ws, [footerRow], { origin: `A${footerRowIndex}` });
+    getMerges(ws).push({ s: { r: footerRowIndex - 1, c: 0 }, e: { r: footerRowIndex - 1, c: 2 } });
+    getMerges(ws).push({
+        s: { r: footerRowIndex - 1, c: columnCount - 3 },
+        e: { r: footerRowIndex - 1, c: columnCount - 1 },
+    });
+    styleRange(ws, XLSX, footerRowIndex, footerRowIndex, 1, 3, footerCellStyleLeft);
+    styleRange(ws, XLSX, footerRowIndex, footerRowIndex, columnCount - 2, columnCount, footerCellStyleRight);
+
+    ws["!cols"] = OFFICIAL_COLUMNS.map((col) => ({ wch: col.width }));
+
+    const numericColumnIndexes = new Set(
+        OFFICIAL_COLUMNS.map((col, idx) => (col.isNumeric ? idx + 1 : null)).filter((value): value is number => value !== null),
+    );
+
+    styleRange(ws, XLSX, tableHeaderRow, tableHeaderRow, 1, columnCount, headerCellStyle, numericColumnIndexes);
+    if (rows.length > 0) {
+        styleRange(ws, XLSX, dataStartRow, dataStartRow + rows.length - 1, 1, columnCount, dataCellStyle, numericColumnIndexes);
+    }
+    styleRange(ws, XLSX, totalRowIndex, totalRowIndex, 1, columnCount, totalCellStyle, numericColumnIndexes);
+
+    return { ws };
+};
+
+export async function generateReceiptWorkbookBuffer(
+    receipt: ReceiptDoc,
+    metadata: ExcelExportMetadata,
+): Promise<ArrayBuffer> {
+    const XLSX = await import("xlsx-js-style");
+    const { ws } = buildOfficialWorksheet(XLSX, [receipt], metadata);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Receipt");
     return XLSX.write(wb, { bookType: "xlsx", type: "array", compression: true });
 }
 
-export async function generateReceiptsWorkbookBuffer(receipts: ReceiptDoc[]): Promise<ArrayBuffer> {
+export async function generateReceiptsWorkbookBuffer(
+    receipts: ReceiptDoc[],
+    metadata: ExcelExportMetadata,
+): Promise<ArrayBuffer> {
     if (!Array.isArray(receipts) || receipts.length === 0) {
         throw new Error("No receipts provided for export");
     }
     const XLSX = await import("xlsx-js-style");
-    const summaryTitle =
-        receipts.length === 1
-            ? `Synthèse numérique - ${receipts[0].fileDisplayName || receipts[0].fileName}`
-            : `Synthèse numérique - ${receipts.length} reçus traités`;
-    const { ws } = buildSummarySheet(XLSX, receipts, summaryTitle);
+    const { ws } = buildOfficialWorksheet(XLSX, receipts, metadata);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, receipts.length === 1 ? "Receipt" : "Receipts");
     return XLSX.write(wb, { bookType: "xlsx", type: "array", compression: true });
