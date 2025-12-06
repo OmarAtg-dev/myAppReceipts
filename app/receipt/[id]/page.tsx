@@ -94,44 +94,6 @@ function Receipt() {
         }
     }, [params.id, router]);
 
-    // LOADING state
-    if (receipt === undefined) {
-        return (
-            <div className="container mx-auto py-10 px-4">
-                <div className="flex flex-col items-center justify-center space-y-4">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-                </div>
-            </div>
-        );
-    }
-
-    // NOT FOUND
-    if (receipt === null) {
-        return (
-            <div className="container mx-auto py-10 px-4">
-                <div className="max-w-2xl mx-auto text-center">
-                    <h1 className="text-2xl font-bold mb-4">Receipt Not Found</h1>
-                    <p className="mb-6">
-                        The receipt you&apos;re looking for doesn&apos;t exist or has been removed.
-                    </p>
-                    <Link
-                        href="/"
-                        className="px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                    >
-                        Return Home
-                    </Link>
-                </div>
-            </div>
-        );
-    }
-
-    // Format Upload Date
-    const uploadDate = new Date(receipt.uploadedAt).toLocaleString();
-
-    // Check if extracted data exists
-    const hasExtractedData = !!parsedData;
-    const summaryText = parsedData?.description || receipt.receiptSummary;
-
     const performExcelExport = useCallback(
         async (metadata: ExcelExportMetadata) => {
             if (!receipt) return;
@@ -170,6 +132,44 @@ function Receipt() {
         setExportModalOpen(false);
         void performExcelExport({ section: trimmedSection, rive: exportRive });
     }, [exportSection, exportRive, performExcelExport]);
+
+    // LOADING state
+    if (receipt === undefined) {
+        return (
+            <div className="container mx-auto py-10 px-4">
+                <div className="flex flex-col items-center justify-center space-y-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+                </div>
+            </div>
+        );
+    }
+
+    // NOT FOUND
+    if (receipt === null) {
+        return (
+            <div className="container mx-auto py-10 px-4">
+                <div className="max-w-2xl mx-auto text-center">
+                    <h1 className="text-2xl font-bold mb-4">Receipt Not Found</h1>
+                    <p className="mb-6">
+                        The receipt you&apos;re looking for doesn&apos;t exist or has been removed.
+                    </p>
+                    <Link
+                        href="/"
+                        className="px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                        Return Home
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
+    // Format Upload Date
+    const uploadDate = new Date(receipt.uploadedAt).toLocaleString();
+
+    // Check if extracted data exists
+    const hasExtractedData = !!parsedData;
+    const summaryText = parsedData?.description || receipt.receiptSummary;
     return (
         <>
         <div className="container mx-auto py-10 px-4">
