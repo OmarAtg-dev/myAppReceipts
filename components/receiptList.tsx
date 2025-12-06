@@ -11,7 +11,10 @@ import { Doc, Id } from "@/convex/_generated/dataModel";
 import { FileText, Trash2 } from "lucide-react";
 import { StructuredReceiptData } from "@/types/structuredReceipt";
 import { Button } from "./ui/button";
-import type { ReceiptDoc } from "@/lib/excelExport";
+import type { ExcelExportMetadata, ReceiptDoc, RiveOption } from "@/lib/excelExport";
+import { ExcelExportModal } from "./ExcelExportModal";
+import { LogoManagerModal } from "./LogoManagerModal";
+import { fetchWorkbookLogos } from "@/lib/logoAssets";
 
 function ReceipList() {
     const { user } = useUser();
@@ -21,6 +24,7 @@ function ReceipList() {
         api.receipts.getReceipts,
         user ? { userId: user.id } : "skip",
     );
+    const brandingAssets = useQuery(api.branding.getBrandingAssets, user ? {} : "skip");
 
     const [selectedIds, setSelectedIds] = useState<Set<Id<"receipts">>>(new Set());
     const [isExporting, setIsExporting] = useState(false);
@@ -29,6 +33,11 @@ function ReceipList() {
     const [exportError, setExportError] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+    const [isExportModalOpen, setExportModalOpen] = useState(false);
+    const [exportSection, setExportSection] = useState("");
+    const [exportRive, setExportRive] = useState<RiveOption>("VG 1 ere");
+    const [isLogoModalOpen, setLogoModalOpen] = useState(false);
+    const [logoModalMode, setLogoModalMode] = useState<"enforce" | "manage">("enforce");
 
     const processedReceipts = useMemo(
         () => (receipts ?? []).filter((receipt) => receipt.status === "processed"),
@@ -68,6 +77,31 @@ function ReceipList() {
         }
     }, [selectedIds, deleteWarning]);
 
+    const ensureLogosReady = useCallback(() => {
+        if (!brandingAssets?.companyLogoStorageId || !brandingAssets?.clientLogoStorageId) {
+            setLogoModalMode("enforce");
+            setLogoModalOpen(true);
+            return false;
+        }
+        return true;
+    }, [brandingAssets]);
+
+    const downloadLogosForExport = useCallback(async () => {
+        if (!brandingAssets?.companyLogoStorageId || !brandingAssets?.clientLogoStorageId) {
+            throw new Error("Branding logos missing");
+        }
+        return fetchWorkbookLogos({
+            company: {
+                storageId: brandingAssets.companyLogoStorageId,
+                mimeType: brandingAssets.companyLogoType,
+            },
+            client: {
+                storageId: brandingAssets.clientLogoStorageId,
+                mimeType: brandingAssets.clientLogoType,
+            },
+        });
+    }, [brandingAssets]);
+
     const toggleReceiptSelection = useCallback((id: Id<"receipts">) => {
         setSelectedIds((prev) => {
             const next = new Set(prev);
@@ -80,44 +114,79 @@ function ReceipList() {
         });
     }, []);
 
-    const handleExport = useCallback(async () => {
+    const handleExport = useCallback(
+        async (metadata: ExcelExportMetadata) => {
+            if (!receipts) return;
+            const eligible = receipts.filter(
+                (receipt): receipt is ReceiptDoc =>
+                    receipt.status === "processed" && selectedIds.has(receipt._id),
+            );
+
+            if (eligible.length === 0) {
+                setExportWarning("Select at least one processed receipt to export.");
+                return;
+            }
+
+            if (!ensureLogosReady()) {
+                return;
+            }
+
+            setExportWarning(null);
+            setExportError(null);
+            setIsExporting(true);
+
+            try {
+                const [logos, { generateReceiptsWorkbookBuffer }] = await Promise.all([
+                    downloadLogosForExport(),
+                    import("@/lib/excelExport"),
+                ]);
+                const buffer = await generateReceiptsWorkbookBuffer(eligible, metadata, logos);
+                const blob = new Blob([buffer], {
+                    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                const timestamp = new Date().toISOString().split("T")[0];
+                link.href = url;
+                link.download = `receipts-${timestamp}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error("Failed to export receipts", error);
+                setExportError("Unable to export the selected receipts. Please try again.");
+            } finally {
+                setIsExporting(false);
+            }
+        },
+        [receipts, selectedIds, ensureLogosReady, downloadLogosForExport],
+    );
+
+    const handleOpenExportModal = useCallback(() => {
         if (!receipts) return;
         const eligible = receipts.filter(
-            (receipt): receipt is ReceiptDoc =>
-                receipt.status === "processed" && selectedIds.has(receipt._id),
+            (receipt) => receipt.status === "processed" && selectedIds.has(receipt._id),
         );
-
         if (eligible.length === 0) {
             setExportWarning("Select at least one processed receipt to export.");
             return;
         }
-
-        setExportWarning(null);
-        setExportError(null);
-        setIsExporting(true);
-
-        try {
-            const { generateReceiptsWorkbookBuffer } = await import("@/lib/excelExport");
-            const buffer = await generateReceiptsWorkbookBuffer(eligible);
-            const blob = new Blob([buffer], {
-                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            const timestamp = new Date().toISOString().split("T")[0];
-            link.href = url;
-            link.download = `receipts-${timestamp}.xlsx`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error("Failed to export receipts", error);
-            setExportError("Unable to export the selected receipts. Please try again.");
-        } finally {
-            setIsExporting(false);
+        if (!ensureLogosReady()) {
+            return;
         }
-    }, [receipts, selectedIds]);
+        setExportWarning(null);
+        setExportModalOpen(true);
+    }, [receipts, selectedIds, ensureLogosReady]);
+
+    const handleModalConfirm = useCallback(() => {
+        const trimmedSection = exportSection.trim();
+        if (!trimmedSection) {
+            return;
+        }
+        setExportModalOpen(false);
+        void handleExport({ section: trimmedSection, rive: exportRive });
+    }, [exportSection, exportRive, handleExport]);
 
     const handleDeleteSelected = useCallback(async () => {
         if (selectedIds.size === 0) {
@@ -183,6 +252,7 @@ function ReceipList() {
     }
 
     return (
+        <>
         <div className="w-full">
             <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -198,11 +268,22 @@ function ReceipList() {
                     <p className="text-sm font-medium text-gray-600">Actions</p>
                     <div className="flex flex-wrap gap-2">
                         <Button
-                            onClick={handleExport}
+                            onClick={handleOpenExportModal}
                             disabled={isExporting || processedReceipts.length === 0}
                             className="px-4"
                         >
                             {isExporting ? "Exporting…" : "Export to Excel"}
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setLogoModalMode("manage");
+                                setLogoModalOpen(true);
+                            }}
+                            variant="outline"
+                            className="px-4"
+                            disabled={!brandingAssets}
+                        >
+                            Manage logos
                         </Button>
                         <Button
                             onClick={handleDeleteSelected}
@@ -305,8 +386,29 @@ function ReceipList() {
                 </Table>
             </div>
         </div>
+        <LogoManagerModal
+            open={isLogoModalOpen}
+            mode={logoModalMode}
+            logos={brandingAssets ?? null}
+            onClose={() => setLogoModalOpen(false)}
+            onContinue={() => {
+                setLogoModalOpen(false);
+                setExportModalOpen(true);
+            }}
+        />
+        <ExcelExportModal
+            open={isExportModalOpen}
+            section={exportSection}
+            rive={exportRive}
+            isSubmitting={isExporting}
+            onSectionChange={setExportSection}
+            onRiveChange={setExportRive}
+            onCancel={() => setExportModalOpen(false)}
+            onConfirm={handleModalConfirm}
+        />
+        </>
     );
-     
+
 }
 
 export default ReceipList;
